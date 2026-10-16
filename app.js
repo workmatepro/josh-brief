@@ -50,12 +50,23 @@ const ukToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe
 const dayLabel = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' }).replace(',', '');
 const LiveApi = {
   sb: null, data: null, st: {}, pitems: new Set(),
-  client() { return this.sb ??= window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'brief.auth' } }); },
-  async session() { return (await this.client().auth.getSession()).data.session; },
+  client() { return this.sb ??= window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: window.localStorage, storageKey: 'brief.auth', flowType: 'implicit' } }); },
+  // Stay signed in: read the saved session, refresh it if it's near expiry. A network error never signs Josh out;
+  // only an explicit Sign out or a definitively invalid refresh token does.
+  async session() {
+    const a = this.client().auth; let s = (await a.getSession()).data.session;
+    if (!s) return null;
+    if (s.expires_at && s.expires_at * 1000 - Date.now() < 120000 && a.refreshSession) {
+      const { data, error } = await a.refreshSession();
+      if (data && data.session) s = data.session;
+      else if (error && isDeadRefresh(error)) { await a.signOut({ scope: 'local' }).catch(() => {}); return null; }
+    }
+    return s;
+  },
   async sendCode(email) { return this.client().auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: REDIRECT } }); },
   async verify(email, token) { return this.client().auth.verifyOtp({ email, token, type: 'email' }); },
   async signOut() { await this.client().auth.signOut(); },
-  async isJosh() { const { data, error } = await this.client().rpc('is_josh'); return !error && data === true; },
+  async isJosh() { const { data, error } = await this.client().rpc('is_josh'); if (error && (!error.code || /fetch|network/i.test(error.message || ''))) return null; return !error && data === true; },
   async q(table, build = x => x) { const { data, error } = await build(this.client().from(table).select('*')); if (error) throw new Error(table + ': ' + error.message); return data || []; },
   async load() {
     const [briefs, items, logs, qs, comments, ratings, depts, reports, updates, projects, pitems, todos] = await Promise.all([
@@ -144,15 +155,16 @@ const api = DEMO ? MockApi : LiveApi;
 let D, days, route = [];
 // Hosting: GitHub Pages project site, https://<user>.github.io/josh-brief/. Every URL is relative; routes are #hash so no server rewrites are needed.
 // Auth redirect (magic-link fallback only; main flow is the 6-digit code) = current origin + path, so it works under /josh-brief/ and locally.
+const isDeadRefresh = e => { const m = String((e && (e.code || e.message)) || '').toLowerCase(); return (e && e.status >= 400 && e.status < 500) && /refresh_token|invalid refresh|already used|not found|session_not_found|revoked/.test(m); };
 const REDIRECT = location.origin + location.pathname;   // live: auth.signInWithOtp({email, options:{shouldCreateUser:false, emailRedirectTo: REDIRECT}})
 // ---- 6-digit code sign-in. Live: signInWithOtp (shouldCreateUser true until Josh's first login) + verifyOtp type 'email'. Demo: any 6 digits.
 let signedIn = false;
 function signIn(msg) {
   signedIn = false;
-  $('#view').innerHTML = `<div class="card signin"><h2>Sign in</h2><p class="bad-msg" id="smsg2"${msg ? '' : ' hidden'}>${esc(msg || '')}</p><p class="mut">We'll email a 6-digit code. Type it here, inside the app (email links don't work in home-screen apps on iPhone). The home-screen app and Safari keep separate sign-ins, so sign in once in the one you use.</p>
+  $('#view').innerHTML = `<div class="card signin"><h2>Sign in</h2><p class="bad-msg" id="smsg2"${msg ? '' : ' hidden'}>${esc(msg || '')}</p><p class="mut">We'll email a 6-digit code. Type it here, inside the app (email links don't work in home-screen apps on iPhone). The home-screen app and Safari keep separate sign-ins: sign in here once and it stays signed in until you tap Sign out.</p>
    <input id="em" type="email" value="${DEMO ? 'josh@example.com' : esc(LS.get('email', JOSH_EMAIL))}" placeholder="Email" autocomplete="email" autocapitalize="off" autocorrect="off">
    <button class="btn" id="send" type="button">Email me a code</button>
-   <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" hidden><button class="btn" id="ver" type="button" hidden>Sign in</button>
+   <input id="code" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" hidden><button class="btn" id="ver" type="button" hidden>Sign in</button>
    <p class="smsg" id="smsg" role="status">${DEMO ? 'Demo: any 6 digits work.' : 'The code expires in 10 minutes.'}</p></div>`;
   const em = () => $('#em').value.trim().toLowerCase(), say = (t, bad) => { const m = $('#smsg'); m.textContent = t; m.className = 'smsg' + (bad ? ' bad-msg' : ' ok-msg'); m.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
   $('#send').onclick = async () => {
@@ -163,6 +175,7 @@ function signIn(msg) {
       b.disabled = false; b.textContent = 'Email me a code again'; if (error) return say('Could not send the code: ' + error.message, 1); LS.set('email', em()); }
     $('#code').hidden = $('#ver').hidden = false; $('#code').focus(); say('Code sent. Check your email, then type the 6 digits here.');
   };
+  $('#code').oninput = () => { const i = $('#code'); i.value = i.value.replace(/\D/g, '').slice(0, 6); if (i.value.length === 6 && !$('#ver').disabled) $('#ver').click(); };
   $('#ver').onclick = async () => {
     const c = $('#code').value.trim(); if (!/^\d{6}$/.test(c)) { $('#code').classList.add('bad'); return say('The code is 6 digits.', 1); }
     if (DEMO) { LS.set('session', { at: Date.now() }); return boot2(); }
@@ -195,9 +208,13 @@ async function boot() {
   let s = null; try { s = await api.session(); } catch (e) {}
   if (!authHooked && !DEMO) try { authHooked = true; const c = api.client();
     if (c.auth.onAuthStateChange) c.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT' && signedIn) signIn('You were signed out. Sign in again with a code.'); });
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { c.auth.startAutoRefresh?.(); c.auth.getSession(); } else c.auth.stopAutoRefresh?.(); }); } catch (e) {}
+    const wake = () => { if (document.visibilityState !== 'visible') return; c.auth.startAutoRefresh?.(); api.session().catch(() => {}); };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); else c.auth.stopAutoRefresh?.(); });
+    addEventListener('pageshow', wake); } catch (e) {}
   if (!s) return signIn();
-  if (!(await api.isJosh())) {
+  let josh; try { josh = await api.isJosh(); } catch (e) { josh = null; }
+  if (josh === null) { $('#view').innerHTML = `<div class="card">You're signed in, but the brief can't be reached right now. Check your connection and pull down to reload.</div>`; return; }
+  if (!josh) {
     $('#view').innerHTML = `<div class="card signin"><h2>Signed in</h2><p>You're signed in as ${esc(s.user.email)}, but this account isn't set up for the brief yet. Systems links it after the first sign-in.</p><button class="btn ghost" id="signout">Sign out</button></div>`;
     $('#signout').onclick = async () => { await api.signOut(); location.reload(); }; return;
   }
