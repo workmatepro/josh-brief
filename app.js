@@ -27,6 +27,10 @@ const MockApi = {
   markSeen(id) { const s = this.seen(); if (!s.has(id)) { s.add(id); LS.set('seen', [...s]); this.log('opened', id); } },        // live: rpc mark_report_read / per-project seen
   todos() { return LS.get('todos', null); },
   setTodos(t) { LS.set('todos', t); },
+  async tickTodo(id, done) { const t = this.todos(); t.items.find(x => x.id === id).done = done; this.setTodos(t); this.log('todo_tick', id); },
+  async addTodo(text) { const t = this.todos(); t.items.push({ id: 't' + Date.now(), text, done: false }); this.setTodos(t); this.log('todo_add', text); },
+  activity() { return LS.get('action_log', []); },
+  async signOut() { localStorage.removeItem('brief.session'); },
   // Live updates. Live: supabase.channel('today').on('postgres_changes',{event:'INSERT',schema:'public',table:'updates'},cb)
   //   (+ project_items) .subscribe(); fallback poll every 30 s if the socket drops. Mock: poll data file every 15 s + window.__push for tests.
   subscribe(cb) {
@@ -35,32 +39,146 @@ const MockApi = {
       const fresh = n.updates.filter(u => !have.has(u.id)); if (fresh.length) { this.data.updates.push(...fresh); cb('poll'); } } catch (e) {} }, +(new URLSearchParams(location.search).get('poll')) || 15000);
   },
 };
-const api = MockApi;
+
+// ---- LIVE backend: Supabase zrjvtzjtwttkkohenfcl. Public URL + publishable key only (public by design; RLS is the gate). Never service_role.
+const SB_URL = 'https://zrjvtzjtwttkkohenfcl.supabase.co';
+const SB_KEY = 'sb_publishable_8sqGf-5eBfcKGTZ1satpFA_V36ASbjE';
+const JOSH_EMAIL = 'bwj1630j@gmail.com';   // UI filter only; the database (app_config.josh_uid + RLS) is the real gate
+const ukToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+const dayLabel = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' }).replace(',', '');
+const LiveApi = {
+  sb: null, data: null, st: {}, pitems: new Set(),
+  client() { return this.sb ??= window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'brief.auth' } }); },
+  async session() { return (await this.client().auth.getSession()).data.session; },
+  async sendCode(email) { return this.client().auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: REDIRECT } }); },
+  async verify(email, token) { return this.client().auth.verifyOtp({ email, token, type: 'email' }); },
+  async signOut() { await this.client().auth.signOut(); },
+  async isJosh() { const { data, error } = await this.client().rpc('is_josh'); return !error && data === true; },
+  async q(table, build = x => x) { const { data, error } = await build(this.client().from(table).select('*')); if (error) throw new Error(table + ': ' + error.message); return data || []; },
+  async load() {
+    const [briefs, items, logs, qs, comments, ratings, depts, reports, updates, projects, pitems, todos] = await Promise.all([
+      this.q('briefs', x => x.order('iso_date', { ascending: false }).limit(60)), this.q('items'), this.q('action_log', x => x.order('at', { ascending: false }).limit(500)),
+      this.q('feedback_questions'), this.q('item_comments'), this.q('ratings'), this.q('departments', x => x.order('sort')), this.q('reports', x => x.order('created_at')),
+      this.q('updates', x => x.order('created_at', { ascending: false }).limit(300)), this.q('projects'), this.q('project_items', x => x.order('created_at')), this.q('todos', x => x.order('created_at'))]);
+    const today = ukToday(), tileOfDept = Object.fromEntries(depts.map(d => [d.slug, d.tile])), st = {};
+    const TILE_NAMES = { tech: 'Tech', business: 'Business', 'marketing-visuals': 'Marketing / Visuals', support: 'Support', family: 'Family' };
+    // per-item state the views read through api.state(id)
+    for (const it of items) st[it.id] = { answer: it.answer || undefined, status: it.status === 'draft' ? undefined : it.status === 'declined' ? 'declined' : 'approved',
+      edited: it.was_edited, final: { to: it.email_to, subject: it.email_subject, body: it.email_body }, comments: [], edit: it.kind === 'email' ? { to: it.email_to, subject: it.email_subject, body: it.email_body } : undefined };
+    for (const c of comments) (st[c.item_id] ??= { comments: [] }).comments.push({ body: c.body, at: c.created_at });
+    for (const r of ratings) if (st[r.item_id]) st[r.item_id].rating = { score: r.score, comment: r.comment || '' };
+    for (const q of qs) st[q.id] = { answer: q.answer || undefined };
+    for (const p of pitems) st[p.id] = { ...(st[p.id] || {}), answer: p.answer || undefined };
+    this.st = st; this.pitems = new Set(pitems.map(p => p.id)); this.items = Object.fromEntries(items.map(i => [i.id, i]));
+    // days, keyed by iso_date (morning + night briefs of a day merge; latest content wins)
+    const days = {}; const byDate = {};
+    for (const b of briefs) (byDate[b.iso_date] ??= []).push(b);
+    if (!byDate[today]) byDate[today] = [];
+    const dates = Object.keys(byDate).sort();
+    dates.forEach((iso, i) => {
+      const bs = byDate[iso].sort((a, b) => (a.published_at || '').localeCompare(b.published_at || '')), last = bs[bs.length - 1], c = (last && last.content) || {};
+      const ids = new Set(bs.map(b => b.id)), its = items.filter(it => ids.has(it.brief_id));
+      const from = i ? (byDate[dates[i - 1]].slice(-1)[0] || {}).published_at || dates[i - 1] : '0000', to = last ? last.published_at : new Date().toISOString();
+      days[iso] = { label: c.label || dayLabel(iso), kind: last ? (last.kind === 'night' ? 'Night' : 'Morning') : 'Morning', focus: c.focus || null,
+        since: Array.isArray(c.since) ? c.since : logs.filter(l => l.at > from && l.at <= to && l.actor === 'josh').slice(0, 20).map(l => ({ you: l.action.replace(/_/g, ' '), item: l.outcome || '', owner: l.owner_bot || 'Unowned', status: l.status || 'logged', outcome: l.outcome || '' })),
+        questions: iso === today ? qs.filter(q => ['open', 'shown', 'answered'].includes(q.status)).map(q => ({ id: q.id, from: q.asked_by, via: q.via_bot || q.via, q: q.question })) : [],
+        decisions: its.filter(x => x.kind === 'decision').map(x => ({ id: x.id, owner: x.owner_bot, q: x.title, why: x.note || '' })),
+        emails: its.filter(x => x.kind === 'email').map(x => ({ id: x.id, writer: x.writer_bot || x.owner_bot, lead: x.lead_bot || x.owner_bot, to: x.email_original?.to ?? x.email_to, subject: x.email_original?.subject ?? x.email_subject, body: x.email_original?.body ?? x.email_body })),
+        ideas: its.filter(x => x.kind === 'idea').map(x => ({ id: x.id, dept: x.owner_bot, text: x.title })) };
+    });
+    const projs = projects.filter(p => tileOfDept[p.department]).map(p => ({ id: p.id, dept: tileOfDept[p.department], title: p.title, status: p.status, updated_at: p.updated_at, summary: p.summary, report_id: p.report_id,
+      links: [], items: pitems.filter(x => x.project_id === p.id).map(x => ({ id: x.id, kind: x.kind, title: x.title, one_line: x.one_line, detail_md: x.detail_md, ref: x.ref, needs_answer: x.needs_answer, links: x.links })) }));
+    const tiles = Object.keys(TILE_NAMES).map(t => { const latest = projs.filter(p => p.dept === t).sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
+      return { slug: t, name: TILE_NAMES[t], bot: TILE_NAMES[t].split(' ')[0], avatar: null, private: t === 'family', summary: t === 'family' ? 'Private item: open in Family' : latest ? latest.title : 'Nothing new yet.' }; });
+    const priv = reports.filter(r => r.is_private), pub = reports.filter(r => !r.is_private && tileOfDept[r.department]);
+    this.reads = new Set(reports.filter(r => r.read_at).map(r => r.id));
+    const carried = todos.filter(t => !t.done && t.iso_date < today), todays = todos.filter(t => t.iso_date === today);
+    this.data = { live: true, days, tiles, projects: projs,
+      family: priv.map(r => ({ id: r.id, title: 'Private item', summary: 'Private item: open in Family', pointer: String(r.body_md || '').replace(/^Pointer:\s*/, '') || 'see Family bot' })),
+      reports: pub.map(r => ({ id: r.id, dept: tileOfDept[r.department], author: r.author_bot, title: r.title, summary: r.summary, body_md: r.body_md, links: r.links, created_at: r.created_at })),
+      updates: updates.filter(u => tileOfDept[u.department]).map(u => ({ id: u.id, at: u.created_at, dept: tileOfDept[u.department], bot: u.author_bot, text: u.text })),
+      todos: [...carried.map(t => ({ id: t.id, text: t.text, done: t.done, carried: true })), ...todays.map(t => ({ id: t.id, text: t.text, done: t.done }))] };
+    this.log_rows = logs;
+    return this.data;
+  },
+  state(id) { return this.st[id] || {}; },
+  async must(p) { const { error } = await p; if (error) { alert('Not saved: ' + error.message); throw error; } },
+  async answer(id, v) {
+    if (this.pitems.has(id)) return this.must(this.client().rpc('answer_project_item', { p_item: id, p_answer: v, p_note: null }));
+    const a = v === 'up' ? 'yes' : v === 'down' ? 'no' : v;           // items.answer is yes/no; the DB logs it for the owner bot
+    return this.must(this.client().from('items').update({ answer: a }).eq('id', id));
+  },
+  async comment(id, body) { return this.must(this.client().from('item_comments').insert({ item_id: id, body })); },
+  async saveEdit(id, f) { const it = this.items[id]; if (it && f.to === it.email_to && f.subject === it.email_subject && f.body === it.email_body) return;
+    return this.must(this.client().from('items').update({ email_to: f.to, email_subject: f.subject, email_body: f.body }).eq('id', id)); },   // guard resets to draft
+  async confirm(id) { await this.must(this.client().from('items').update({ status: 'approved' }).eq('id', id)); return true; },              // hash + single-use + 24 h set by the DB
+  async reject(id) { return this.must(this.client().from('items').update({ status: 'declined' }).eq('id', id)); },
+  async rate(id, score, comment) { const r = this.st[id] && this.st[id].rating;
+    return this.must(r ? this.client().from('ratings').update({ score, comment }).eq('item_id', id) : this.client().from('ratings').insert({ item_id: id, score, comment })); },
+  async answerQuestion(id, a) { return this.must(this.client().from('feedback_questions').update({ answer: a }).eq('id', id)); },
+  seen() { const s = new Set(LS.get('seen', [])); this.reads.forEach(r => s.add(r)); return s; },
+  markSeen(id) { const s = new Set(LS.get('seen', [])); if (s.has(id)) return; s.add(id); LS.set('seen', [...s]);
+    if ((this.data.reports || []).some(r => r.id === id)) this.client().rpc('mark_report_read', { p_id: id }); },
+  todos() { return { date: ukToday(), items: this.data.todos }; },
+  async tickTodo(id, done) { return this.must(this.client().from('todos').update({ done, done_at: done ? new Date().toISOString() : null }).eq('id', id)); },
+  async addTodo(text) { const d = ukToday(); return this.must(this.client().from('todos').insert({ text, iso_date: d, first_date: d, added_by: 'josh' })); },
+  activity() { return (this.log_rows || []).filter(l => l.actor === 'josh').slice(0, 8).reverse().map(l => ({ at: l.at, action: l.action, item: l.outcome || '' })); },
+  subscribe(cb) {
+    let t = null; const kick = why => { clearTimeout(t); t = setTimeout(async () => { try { await this.load(); D = this.data; cb(why); } catch (e) {} }, 400); };
+    const ch = this.client().channel('brief-live');
+    for (const table of ['updates', 'projects', 'project_items', 'briefs', 'items', 'reports', 'todos', 'feedback_questions']) ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => kick('push'));
+    ch.subscribe();
+    setInterval(() => kick('poll'), 30000);                      // 30 s poll as a backup to realtime
+  },
+};
+const DEMO = new URLSearchParams(location.search).get('demo') === '1';
+const api = DEMO ? MockApi : LiveApi;
 let D, days, route = [];
 // Hosting: GitHub Pages project site, https://<user>.github.io/josh-brief/. Every URL is relative; routes are #hash so no server rewrites are needed.
 // Auth redirect (magic-link fallback only; main flow is the 6-digit code) = current origin + path, so it works under /josh-brief/ and locally.
 const REDIRECT = location.origin + location.pathname;   // live: auth.signInWithOtp({email, options:{shouldCreateUser:false, emailRedirectTo: REDIRECT}})
-// ---- 6-digit code sign-in (mock). Live: auth.signInWithOtp({email, options:{shouldCreateUser:false}}) then auth.verifyOtp({email, token, type:'email'})
-function signIn() {
-  $('#view').innerHTML = `<div class="card signin"><h2>Sign in</h2><p class="mut">We'll email a 6-digit code to Josh's address. Type it here, inside the app (email links don't work in home-screen apps on iPhone).</p>
-   <input id="em" type="email" value="josh@example.com" autocomplete="email"><button class="btn" id="send">Email me a code</button>
+// ---- 6-digit code sign-in. Live: signInWithOtp (shouldCreateUser true until Josh's first login) + verifyOtp type 'email'. Demo: any 6 digits.
+function signIn(msg) {
+  $('#view').innerHTML = `<div class="card signin"><h2>Sign in</h2>${msg ? `<p class="bad-msg">${esc(msg)}</p>` : ''}<p class="mut">We'll email a 6-digit code. Type it here, inside the app (email links don't work in home-screen apps on iPhone).</p>
+   <input id="em" type="email" value="${DEMO ? 'josh@example.com' : ''}" placeholder="Email" autocomplete="email"><button class="btn" id="send">Email me a code</button>
    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" hidden><button class="btn" id="ver" hidden>Sign in</button>
-   <p class="mut small">Mock: any 6 digits work. Live: code expires in 1 hour.</p></div>`;
-  $('#send').onclick = () => { $('#code').hidden = $('#ver').hidden = false; $('#code').focus(); };
-  $('#ver').onclick = () => { if (/^\d{6}$/.test($('#code').value)) { LS.set('session', { at: Date.now() }); boot2(); } else $('#code').classList.add('bad'); };
+   <p class="mut small" id="smsg">${DEMO ? 'Demo: any 6 digits work.' : 'The code expires in 10 minutes.'}</p></div>`;
+  const em = () => $('#em').value.trim().toLowerCase(), say = t => { $('#smsg').textContent = t; };
+  $('#send').onclick = async () => {
+    if (!DEMO && em() !== JOSH_EMAIL) return say('This brief is private to Josh.');
+    if (!DEMO) { $('#send').disabled = true; const { error } = await api.sendCode(em()); $('#send').disabled = false; if (error) return say('Could not send the code: ' + error.message); }
+    $('#code').hidden = $('#ver').hidden = false; $('#code').focus(); say('Code sent. Check your email.');
+  };
+  $('#ver').onclick = async () => {
+    const c = $('#code').value.trim(); if (!/^\d{6}$/.test(c)) { $('#code').classList.add('bad'); return; }
+    if (DEMO) { LS.set('session', { at: Date.now() }); return boot2(); }
+    $('#ver').disabled = true; const { error } = await api.verify(em(), c); $('#ver').disabled = false;
+    if (error) return say('That code did not work: ' + error.message);
+    boot();
+  };
 }
 
 async function boot() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
-  const p = new URLSearchParams(location.search);
-  if (p.get('mock') === '1') LS.set('session', { at: Date.now() });   // headless test hook only
-  if (!LS.get('session')) return signIn();
-  boot2();
+  document.getElementById('ex').hidden = !DEMO;
+  if (DEMO) {
+    if (new URLSearchParams(location.search).get('mock') === '1') LS.set('session', { at: Date.now() });   // headless test hook only
+    if (!LS.get('session')) return signIn();
+    return boot2();
+  }
+  if (!window.supabase) return signIn('Could not load the sign-in library. Check your connection.');
+  const s = await api.session();
+  if (!s) return signIn();
+  if (!(await api.isJosh())) {
+    $('#view').innerHTML = `<div class="card signin"><h2>Signed in</h2><p>You're signed in as ${esc(s.user.email)}, but this account isn't set up for the brief yet. Systems links it after the first sign-in.</p><button class="btn ghost" id="signout">Sign out</button></div>`;
+    $('#signout').onclick = async () => { await api.signOut(); location.reload(); }; return;
+  }
+  try { await boot2(); } catch (e) { $('#view').innerHTML = `<div class="card">Could not load your brief: ${esc(e.message)}</div>`; }
 }
 async function boot2() {
   D = await api.load();
   days = Object.keys(D.days).sort().reverse();               // Today = newest iso_date (live: today's UK date)
-  carryOver();
+  if (DEMO) carryOver();
   document.querySelectorAll('nav button').forEach(b => b.onclick = () => go(b.dataset.r));
   addEventListener('hashchange', draw);
   let x0 = null, y0 = null;
@@ -211,7 +329,7 @@ function dayView(k) {
   const sec = (t, arr, sub = '') => arr.length ? `<section><h2>${t}${sub ? ` <span class="sub">${sub}</span>` : ''}</h2>${arr.join('')}</section>` : '';
   let h = live;
   if (night) {
-    const today = k, log = LS.get('action_log', []).filter(a => ukDate(a.at) === ukDate(new Date().toISOString()));
+    const today = k, log = api.activity().filter(a => ukDate(a.at) === ukDate(new Date().toISOString()));
     const openMorning = [...d.decisions.filter(q => !api.state(q.id).answer), ...d.emails.filter(m => !['approved', 'declined'].includes(api.state(m.id).status)), ...d.ideas.filter(x => !api.state(x.id).answer), ...d.questions.filter(q => !api.state(q.id).answer)];
     h += `<section class="night-sum"><h2>Tonight's summary</h2><div class="card nightcard"><div class="big3"><div><b>${log.length}</b><span>things you did</span></div><div><b>${ups.length}</b><span>bot updates</span></div><div><b>${openMorning.length + openDeptItems().length}</b><span>still open</span></div></div>
       ${log.length ? `<div class="mut small">${log.slice(-6).reverse().map(a => esc(a.action.replace(/_/g, ' ')) + ' · ' + fmtT(a.at)).join('<br>')}</div>` : '<div class="mut small">Nothing pressed today yet.</div>'}</div></section>`;
@@ -280,7 +398,7 @@ function todoView() {
 }
 function moreView() {
   return `<section><h2>More</h2><div class="card">Room for future sections: Ratings history, Ideas bank, Settings.</div>
-   <div class="card"><b>Activity on this phone (mock action log)</b><div class="mut small">${(LS.get('action_log', [])).slice(-8).reverse().map(a => esc(a.action + ' · ' + a.item)).join('<br>') || 'Nothing yet.'}</div></div>
+   <div class="card"><b>${DEMO ? 'Activity on this phone (demo log)' : 'Your recent actions'}</b><div class="mut small">${api.activity().slice(-8).reverse().map(a => esc(a.action + ' · ' + a.item)).join('<br>') || 'Nothing yet.'}</div></div>
    <button class="btn ghost" id="signout">Sign out</button></section>`;
 }
 
@@ -309,22 +427,23 @@ function draw(keepScroll) {
   if (keepScroll) scrollTo(0, y);
 }
 
+async function refresh() { if (!DEMO) { D = await api.load(); } draw(true); }
 function wire(day) {
   const v = $('#view');
-  v.querySelectorAll('[data-ans]').forEach(b => b.onclick = async () => { await api.answer(b.dataset.ans, b.dataset.v, b.dataset.o); draw(true); });
-  v.querySelectorAll('[data-cmsend]').forEach(b => b.onclick = async () => { const i = v.querySelector(`[data-cm="${b.dataset.cmsend}"]`); if (i.value.trim()) { await api.comment(b.dataset.cmsend, i.value.trim()); draw(true); } });
-  v.querySelectorAll('[data-qsend]').forEach(b => b.onclick = async () => { const i = v.querySelector(`[data-qa="${b.dataset.qsend}"]`); if (i.value.trim()) { await api.answerQuestion(b.dataset.qsend, i.value.trim()); draw(true); } });
+  v.querySelectorAll('[data-ans]').forEach(b => b.onclick = async () => { await api.answer(b.dataset.ans, b.dataset.v, b.dataset.o); await refresh(); });
+  v.querySelectorAll('[data-cmsend]').forEach(b => b.onclick = async () => { const i = v.querySelector(`[data-cm="${b.dataset.cmsend}"]`); if (i.value.trim()) { await api.comment(b.dataset.cmsend, i.value.trim()); await refresh(); } });
+  v.querySelectorAll('[data-qsend]').forEach(b => b.onclick = async () => { const i = v.querySelector(`[data-qa="${b.dataset.qsend}"]`); if (i.value.trim()) { await api.answerQuestion(b.dataset.qsend, i.value.trim()); await refresh(); } });
   v.querySelectorAll('[data-e]').forEach(i => i.onchange = () => { const id = i.dataset.e, m = day.emails.find(x => x.id === id), s = api.state(id); api.saveEdit(id, { ...(s.edit || { to: m.to, subject: m.subject, body: m.body }), [i.dataset.f]: i.value }); });
   v.querySelectorAll('[data-confirm]').forEach(b => b.onclick = async () => {
     const id = b.dataset.confirm, m = day.emails.find(x => x.id === id), f = {};
     v.querySelectorAll(`[data-e="${id}"]`).forEach(i => f[i.dataset.f] = i.value);
-    await api.saveEdit(id, f); await api.confirm(id, m, f); draw(true);
+    await api.saveEdit(id, f); await api.confirm(id, m, f); await refresh();
   });
-  v.querySelectorAll('[data-rejectmail]').forEach(b => b.onclick = async () => { await api.reject(b.dataset.rejectmail); draw(true); });
-  v.querySelectorAll('[data-rate]').forEach(b => b.onclick = async () => { const id = b.dataset.rate, c = v.querySelector(`[data-ratec="${id}"]`); await api.rate(id, +b.dataset.s, c.value); draw(true); });
-  v.querySelectorAll('[data-ratec]').forEach(c => c.onchange = async () => { const r = api.state(c.dataset.ratec).rating; if (r) { await api.rate(c.dataset.ratec, r.score, c.value); draw(true); } });
-  v.querySelectorAll('[data-todo]').forEach(c => c.onchange = () => { const t = api.todos(); t.items.find(x => x.id === c.dataset.todo).done = c.checked; api.setTodos(t); api.log('todo_tick', c.dataset.todo); draw(true); });
-  const add = $('#addtodo'); if (add) add.onclick = () => { const s = $('#newtodo').value.trim(); if (!s) return; const t = api.todos(); t.items.push({ id: 't' + Date.now(), text: s, done: false }); api.setTodos(t); api.log('todo_add', s); draw(true); };
-  const so = $('#signout'); if (so) so.onclick = () => { localStorage.removeItem('brief.session'); location.reload(); };
+  v.querySelectorAll('[data-rejectmail]').forEach(b => b.onclick = async () => { await api.reject(b.dataset.rejectmail); await refresh(); });
+  v.querySelectorAll('[data-rate]').forEach(b => b.onclick = async () => { const id = b.dataset.rate, c = v.querySelector(`[data-ratec="${id}"]`); await api.rate(id, +b.dataset.s, c.value); await refresh(); });
+  v.querySelectorAll('[data-ratec]').forEach(c => c.onchange = async () => { const r = api.state(c.dataset.ratec).rating; if (r) { await api.rate(c.dataset.ratec, r.score, c.value); await refresh(); } });
+  v.querySelectorAll('[data-todo]').forEach(c => c.onchange = async () => { await api.tickTodo(c.dataset.todo, c.checked); await refresh(); });
+  const add = $('#addtodo'); if (add) add.onclick = async () => { const s = $('#newtodo').value.trim(); if (!s) return; await api.addTodo(s); await refresh(); };
+  const so = $('#signout'); if (so) so.onclick = async () => { await api.signOut(); location.reload(); };
 }
 boot();

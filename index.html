@@ -5,8 +5,8 @@
 <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="stylesheet" href="app.css"><title>Brief · always improving</title></head>
 <body>
-<div class="ex" id="ex">EXAMPLE DATA · offline mock · nothing is sent</div>
+<div class="ex" id="ex" hidden>DEMO · made-up example data · nothing is sent</div>
 <header><div class="brand"><b>Workmate</b> Brief<span class="motto">always improving</span></div><div id="day"></div></header>
 <main id="view" aria-live="polite"></main>
 <nav id="tabs"><button data-r="#/">Today</button><button data-r="#/team">Team<span class="nb" hidden></span></button><button data-r="#/todo">To-do</button><button data-r="#/more">More</button></nav>
-<script src="app.js"></script></body></html>
+<script src="vendor/supabase-2.118.0.js"></script><script src="app.js"></script></body></html>

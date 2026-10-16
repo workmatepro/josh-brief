@@ -1,35 +1,185 @@
 {
  "example": true,
- "days": {},
- "todos": [],
+ "note": "ALL MADE-UP EXAMPLE DATA. No real names, IDs or work-queue numbers. Real content lives outside app/ in briefs/private/.",
+ "days": {
+  "2026-10-17": {
+   "label": "Sat 17 Oct",
+   "kind": "Morning",
+   "focus": {
+    "area": "Example focus: the pretend booking page (EXAMPLE)",
+    "tech": "Check the pretend booking page loads fast (EXAMPLE)",
+    "marketing": "Draft a pretend post about it (EXAMPLE)"
+   },
+   "since": [
+    {
+     "you": "Approved",
+     "item": "Example email to a pretend customer (EXAMPLE)",
+     "owner": "Support",
+     "status": "sent",
+     "outcome": "Sent exactly as approved. No edits: logged as successful."
+    },
+    {
+     "you": "Comment",
+     "item": "Example: order more pretend widgets (EXAMPLE)",
+     "owner": "PA",
+     "status": "done",
+     "outcome": "Added to the example call list."
+    },
+    {
+     "you": "Rated 5",
+     "item": "Example quote email (EXAMPLE)",
+     "owner": "Support",
+     "status": "in_progress",
+     "outcome": "Example helper is studying the edits."
+    },
+    {
+     "you": "Comment",
+     "item": "Example: sort the thing from earlier (EXAMPLE)",
+     "owner": "Unowned",
+     "status": "no_owner",
+     "outcome": "PA couldn't tell which bot. See Questions for you."
+    }
+   ],
+   "questions": [
+    {
+     "id": "q1",
+     "from": "Example helper",
+     "via": "Support (head)",
+     "q": "You rated the example quote email 5. Should it start with 'Morning' instead of 'Hi'? (EXAMPLE)"
+    },
+    {
+     "id": "q2",
+     "from": "PA",
+     "via": "Briefs",
+     "q": "Your note 'sort the thing from earlier': which example task did you mean? (EXAMPLE)"
+    }
+   ],
+   "decisions": [
+    {
+     "id": "d1",
+     "owner": "Tech",
+     "q": "Add a pretend health check for the example app? (EXAMPLE)",
+     "why": "Would catch a pretend outage in minutes."
+    },
+    {
+     "id": "d2",
+     "owner": "Business",
+     "q": "Renew the pretend domain early? (EXAMPLE)",
+     "why": "The pretend domain expires in 40 days."
+    }
+   ],
+   "emails": [
+    {
+     "id": "e1",
+     "writer": "Example helper",
+     "lead": "Support",
+     "to": "someone@example.com",
+     "subject": "Your example invoice",
+     "body": "Hi,\n\nYour example invoice is attached. Thanks for your business.\n\nJosh"
+    }
+   ],
+   "ideas": [
+    {
+     "id": "i1",
+     "dept": "Marketing",
+     "text": "Pretend 20-second video about the example booking page. (EXAMPLE)"
+    },
+    {
+     "id": "i2",
+     "dept": "Tech",
+     "text": "Pretend reminder one day before an example visit. (EXAMPLE)"
+    }
+   ]
+  },
+  "2026-10-16": {
+   "label": "Fri 16 Oct",
+   "kind": "Morning",
+   "focus": null,
+   "since": [
+    {
+     "you": "Approved",
+     "item": "Example retry of pretend invoice (EXAMPLE)",
+     "owner": "Tech",
+     "status": "done",
+     "outcome": "Delivered (example)."
+    }
+   ],
+   "questions": [],
+   "decisions": [],
+   "emails": [],
+   "ideas": []
+  },
+  "2026-10-15": {
+   "label": "Thu 15 Oct",
+   "kind": "Night",
+   "focus": {
+    "area": "Example focus: pretend invoices (EXAMPLE)",
+    "tech": "Fix pretend send errors",
+    "marketing": "Pretend reliability story"
+   },
+   "since": [],
+   "questions": [],
+   "decisions": [],
+   "emails": [],
+   "ideas": []
+  },
+  "2026-10-14": {
+   "label": "Wed 14 Oct",
+   "kind": "Night",
+   "focus": null,
+   "since": [],
+   "questions": [],
+   "decisions": [],
+   "emails": [],
+   "ideas": []
+  }
+ },
+ "todos": [
+  {
+   "id": "t1",
+   "text": "Call the pretend supplier (EXAMPLE)",
+   "done": false
+  },
+  {
+   "id": "t2",
+   "text": "Approve the pretend post (EXAMPLE)",
+   "done": true
+  },
+  {
+   "id": "t3",
+   "text": "Sign the pretend letter (EXAMPLE)",
+   "done": false,
+   "carried": true
+  }
+ ],
  "tiles": [
   {
    "slug": "tech",
    "name": "Tech",
    "bot": "Tech",
    "avatar": null,
-   "summary": ""
+   "summary": "Example review ready: 1 pretend fix needs your yes."
   },
   {
    "slug": "business",
    "name": "Business",
    "bot": "Business",
    "avatar": null,
-   "summary": ""
+   "summary": "Example grant shortlist: 1 decision."
   },
   {
    "slug": "marketing",
    "name": "Marketing / Visuals",
    "bot": "Marketing",
    "avatar": null,
-   "summary": ""
+   "summary": "Example post and visual ready."
   },
   {
    "slug": "support",
    "name": "Support",
    "bot": "Support",
    "avatar": null,
-   "summary": ""
+   "summary": "Example onboarding on track."
   },
   {
    "slug": "family",
@@ -37,11 +187,269 @@
    "bot": "Family",
    "avatar": null,
    "private": true,
-   "summary": ""
+   "summary": "Private item: open in Family"
   }
  ],
- "projects": [],
- "family": [],
- "updates": [],
- "reports": []
+ "projects": [
+  {
+   "id": "ex-review",
+   "dept": "tech",
+   "title": "Example app review",
+   "status": "waiting",
+   "updated_at": "2026-10-17T06:15:00Z",
+   "summary": "Made-up review of a pretend booking app. 8 example personas tested: tap a card to see what they struggle with. One example fix needs your yes.",
+   "items": [
+    {
+     "id": "ex-p1",
+     "kind": "persona",
+     "title": "Example persona: Busy parent",
+     "one_line": "Can't find the pretend booking button on a small phone. (EXAMPLE)",
+     "detail_md": "## Example persona: Busy parent\n\nThis is **made-up example** detail for the UI.\n\n- What they tried: a pretend task\n- What went wrong: can't find the pretend booking button on a small phone.\n- Example suggestion: make it one tap\n\n| Step | Result |\n|---|---|\n| Pretend step 1 | OK |\n| Pretend step 2 | Stuck |"
+    },
+    {
+     "id": "ex-p2",
+     "kind": "persona",
+     "title": "Example persona: Night-shift worker",
+     "one_line": "Pretend reminders arrive while they're asleep. (EXAMPLE)",
+     "detail_md": "## Example persona: Night-shift worker\n\nThis is **made-up example** detail for the UI.\n\n- What they tried: a pretend task\n- What went wrong: pretend reminders arrive while they're asleep.\n- Example suggestion: make it one tap\n\n| Step | Result |\n|---|---|\n| Pretend step 1 | OK |\n| Pretend step 2 | Stuck |"
+    },
+    {
+     "id": "ex-p3",
+     "kind": "persona",
+     "title": "Example persona: Retired neighbour",
+     "one_line": "Pretend text is too small and grey to read. (EXAMPLE)",
+     "detail_md": "## Example persona: Retired neighbour\n\nThis is **made-up example** detail for the UI.\n\n- What they tried: a pretend task\n- What went wrong: pretend text is too small and grey to read.\n- Example suggestion: make it one tap\n\n| Step | Result |\n|---|---|\n| Pretend step 1 | OK |\n| Pretend step 2 | Stuck |"
+    },
+    {
+     "id": "ex-p4",
+     "kind": "persona",
+     "title": "Example persona: Student renter",
+     "one_line": "Unsure whether the pretend landlord or they should book. (EXAMPLE)",
+     "detail_md": "## Example persona: Student renter\n\nThis is **made-up example** detail for the UI.\n\n- What they tried: a pretend task\n- What went wrong: unsure whether the pretend landlord or they should book.\n- Example suggestion: make it one tap\n\n| Step | Result |\n|---|---|\n| Pretend step 1 | OK |\n| Pretend step 2 | Stuck |"
+    },
+    {
+     "id": "ex-p5",
+     "kind": "persona",
+     "title": "Example persona: Small shop owner",
+     "one_line": "Wants one pretend invoice for several visits. (EXAMPLE)",
+     "detail_md": "## Example persona: Small shop owner\n\nThis is **made-up example** detail for the UI.\n\n- What they tried: a pretend task\n- What went wrong: wants one pretend invoice for several visits.\n- Example suggestion: make it one tap\n\n| Step | Result |\n|---|---|\n| Pretend step 1 | OK |\n| Pretend step 2 | Stuck |"
+    },
+    {
+     "id": "ex-p6",
+     "kind": "persona",
+     "title": "Example persona: Office manager",
+     "one_line": "Needs a pretend reference number on every invoice. (EXAMPLE)",
+     "detail_md": "## Example persona: Office manager\n\nThis is **made-up example** detail for the UI.\n\n- What they tried: a pretend task\n- What went wrong: needs a pretend reference number on every invoice.\n- Example suggestion: make it one tap\n\n| Step | Result |\n|---|---|\n| Pretend step 1 | OK |\n| Pretend step 2 | Stuck |"
+    },
+    {
+     "id": "ex-p7",
+     "kind": "persona",
+     "title": "Example persona: Example engineer",
+     "one_line": "Has to type the same pretend address twice. (EXAMPLE)",
+     "detail_md": "## Example persona: Example engineer\n\nThis is **made-up example** detail for the UI.\n\n- What they tried: a pretend task\n- What went wrong: has to type the same pretend address twice.\n- Example suggestion: make it one tap\n\n| Step | Result |\n|---|---|\n| Pretend step 1 | OK |\n| Pretend step 2 | Stuck |"
+    },
+    {
+     "id": "ex-p8",
+     "kind": "persona",
+     "title": "Example persona: Example apprentice",
+     "one_line": "Gets signed out of the pretend app mid-job. (EXAMPLE)",
+     "detail_md": "## Example persona: Example apprentice\n\nThis is **made-up example** detail for the UI.\n\n- What they tried: a pretend task\n- What went wrong: gets signed out of the pretend app mid-job.\n- Example suggestion: make it one tap\n\n| Step | Result |\n|---|---|\n| Pretend step 1 | OK |\n| Pretend step 2 | Stuck |"
+    },
+    {
+     "id": "ex-fix1",
+     "kind": "fix",
+     "ref": "EX-00000000-1",
+     "needs_answer": true,
+     "title": "Example security fix",
+     "one_line": "Pretend fix: make example links expire. Approve lets the example bot plan it. (EXAMPLE)",
+     "detail_md": "**Made-up example.** Nothing real.\n\n- (a) Pretend exact matching\n- (b) Pretend links expire after 12 months\n- (c) Pretend tokens stored scrambled\n\n**Acceptance (example):** the pretend tests pass.",
+     "links": [
+      {
+       "label": "Example document",
+       "url": "https://example.com/"
+      }
+     ]
+    },
+    {
+     "id": "ex-d1",
+     "kind": "decision",
+     "needs_answer": true,
+     "title": "Switch the pretend setting on by default? (EXAMPLE)",
+     "one_line": "Example question from the example review.",
+     "detail_md": ""
+    },
+    {
+     "id": "ex-d2",
+     "kind": "decision",
+     "needs_answer": true,
+     "title": "Delete the pretend test records later? (EXAMPLE)",
+     "one_line": "Example question from the example review.",
+     "detail_md": ""
+    }
+   ],
+   "links": [
+    {
+     "label": "Example report",
+     "url": "https://example.com/"
+    }
+   ],
+   "report_id": "ex-r1"
+  },
+  {
+   "id": "ex-bugs",
+   "dept": "tech",
+   "title": "Example screen bugs",
+   "status": "active",
+   "updated_at": "2026-10-16T07:45:00Z",
+   "summary": "3 pretend bugs found on example screens.",
+   "items": [
+    {
+     "id": "ex-b1",
+     "kind": "finding",
+     "title": "Example bug 1",
+     "one_line": "Pretend bug 1 on a pretend screen.",
+     "detail_md": ""
+    },
+    {
+     "id": "ex-b2",
+     "kind": "finding",
+     "title": "Example bug 2",
+     "one_line": "Pretend bug 2 on a pretend screen.",
+     "detail_md": ""
+    },
+    {
+     "id": "ex-b3",
+     "kind": "finding",
+     "title": "Example bug 3",
+     "one_line": "Pretend bug 3 on a pretend screen.",
+     "detail_md": ""
+    }
+   ],
+   "links": [
+    {
+     "label": "Example report",
+     "url": "https://example.com/"
+    }
+   ]
+  },
+  {
+   "id": "ex-biz",
+   "dept": "business",
+   "title": "Example grant shortlist",
+   "status": "active",
+   "updated_at": "2026-10-16T06:30:00Z",
+   "summary": "Two pretend grants to consider.",
+   "items": [
+    {
+     "id": "ex-biz1",
+     "kind": "decision",
+     "needs_answer": true,
+     "title": "Apply for the pretend voucher? (EXAMPLE)",
+     "one_line": "Pretend deadline Friday.",
+     "detail_md": ""
+    }
+   ],
+   "links": [
+    {
+     "label": "Example report",
+     "url": "https://example.com/"
+    }
+   ]
+  },
+  {
+   "id": "ex-mkt",
+   "dept": "marketing",
+   "title": "Example Friday post",
+   "status": "active",
+   "updated_at": "2026-10-16T06:20:00Z",
+   "summary": "A pretend post and visual are ready.",
+   "items": [
+    {
+     "id": "ex-mkt1",
+     "kind": "decision",
+     "needs_answer": true,
+     "title": "Post the pretend video on Friday? (EXAMPLE)",
+     "one_line": "Pretend draft ready.",
+     "detail_md": ""
+    }
+   ],
+   "links": [
+    {
+     "label": "Example report",
+     "url": "https://example.com/"
+    }
+   ]
+  },
+  {
+   "id": "ex-sup",
+   "dept": "support",
+   "title": "Example onboarding",
+   "status": "active",
+   "updated_at": "2026-10-16T06:10:00Z",
+   "summary": "3 pretend testers onboarded.",
+   "items": [
+    {
+     "id": "ex-sup1",
+     "kind": "task",
+     "title": "Pretend tester stuck at sign-in (EXAMPLE)",
+     "one_line": "Example: no action needed.",
+     "detail_md": ""
+    }
+   ],
+   "links": [
+    {
+     "label": "Example report",
+     "url": "https://example.com/"
+    }
+   ]
+  }
+ ],
+ "family": [
+  {
+   "id": "fam-1",
+   "title": "Private item",
+   "summary": "Private item: open in Family",
+   "pointer": "see Family bot"
+  }
+ ],
+ "updates": [
+  {
+   "id": "u1",
+   "at": "2026-10-17T06:10:00Z",
+   "dept": "tech",
+   "bot": "Tech",
+   "text": "Example review is ready (8 pretend personas, 1 pretend fix)."
+  },
+  {
+   "id": "u2",
+   "at": "2026-10-17T06:40:00Z",
+   "dept": "marketing",
+   "bot": "Marketing",
+   "text": "Pretend Friday post drafted."
+  },
+  {
+   "id": "u3",
+   "at": "2026-10-17T07:05:00Z",
+   "dept": "support",
+   "bot": "Support",
+   "text": "Replied to 2 pretend testers."
+  }
+ ],
+ "reports": [
+  {
+   "id": "ex-r1",
+   "dept": "tech",
+   "author": "Tech",
+   "created_at": "2026-10-17T06:15:00Z",
+   "title": "Example app review (made up)",
+   "summary": "A made-up report to show how full reports look.",
+   "body_md": "# Example app review\n**Made-up example.**\n\n## Summary\n- Pretend finding one\n- Pretend finding two\n\n| Measure | Example |\n|---|---|\n| Pretend links | 2 |\n\n[Example link](https://example.com/)",
+   "links": [
+    {
+     "label": "Example file",
+     "url": "https://example.com/"
+    }
+   ]
+  }
+ ]
 }
