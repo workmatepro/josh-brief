@@ -276,12 +276,13 @@ function emailCard(m, ro) {
       ${r ? `<div class="mut small">Rated ${r.score}. Goes to ${esc(m.writer)} via ${esc(m.lead)}. Any question back shows in Questions for you.</div>` : ''}</div>
       ${commentBox(m.id, ro)}</div>`;
   }
-  return `<div class="card" data-kind="email">${head}<details class="em" data-open="${m.id}"><summary><b>${esc(f.subject)}</b><span class="mini">Open email</span></summary>
-    <label class="lbl">To<input data-f="to" data-e="${m.id}" value="${esc(f.to)}" ${ro ? 'disabled' : ''}></label>
-    <label class="lbl">Subject<input data-f="subject" data-e="${m.id}" value="${esc(f.subject)}" ${ro ? 'disabled' : ''}></label>
-    <label class="lbl">Message<textarea rows="6" data-f="body" data-e="${m.id}" ${ro ? 'disabled' : ''}>${esc(f.body)}</textarea></label>
+  const post = !/@/.test(f.to || ''), it = (api.items || {})[m.id] || {};
+  return `<div class="card" data-kind="email">${head}${post ? `<b class="q">${esc(it.title || 'Post')}</b>` : ''}${post && it.note ? `<div class="mut small">${esc(it.note)}</div>` : ''}<details class="em" data-open="${m.id}"><summary><b>${esc(post ? 'Open the post' : f.subject)}</b><span class="mini">${post ? 'View & edit' : 'Open email'}</span></summary>
+    <label class="lbl">${post ? 'Where' : 'To'}<input data-f="to" data-e="${m.id}" value="${esc(f.to)}" ${ro ? 'disabled' : ''}></label>
+    <label class="lbl">${post ? 'Caption' : 'Subject'}<input data-f="subject" data-e="${m.id}" value="${esc(f.subject)}" ${ro ? 'disabled' : ''}></label>
+    <label class="lbl">${post ? 'Post text' : 'Message'}<textarea rows="${post ? 10 : 6}" data-f="body" data-e="${m.id}" ${ro ? 'disabled' : ''}>${esc(f.body)}</textarea></label>
     <div class="yn"><button class="y" data-confirm="${m.id}" ${ro ? 'disabled' : ''}>Approve</button><button class="n" data-rejectmail="${m.id}" ${ro ? 'disabled' : ''}>Reject</button></div>
-    <div class="mut small">Edit anything, then Approve. Nothing is sent until you approve. Your approval goes to Personal Assistant, which sends exactly this text.</div></details>
+    <div class="mut small">Edit anything, then Approve. Nothing is sent until you approve. Your approval goes to Personal Assistant, which ${post ? 'posts' : 'sends'} exactly this text.</div></details>
     ${commentBox(m.id, ro)}</div>`;
 }
 // ---- Departments: safe markdown (escape first, then a small whitelist), tiles, reader
@@ -427,7 +428,7 @@ function dashTop(k, ro, d) {
   return briefSummaries() + goalSection()
     + sec('top3', 'Top 3 right now', top.map(c => dashCard(c)), '', 'Nothing urgent. 🎉')
     + tickList(false)
-    + sec('emails', 'Emails for you', [...d.emails.map(m => emailCard(m, false)), ...dashOf('email').map(c => dashCard(c))], `${openEm.length + dashOf('email', c => c.status === 'open').length} waiting`, 'No emails waiting for you.')
+    + sec('emails', 'Approvals: emails & posts', [...d.emails.map(m => emailCard(m, false)), ...dashOf('email').map(c => dashCard(c))], `${openEm.length + dashOf('email', c => c.status === 'open').length} waiting`, 'No emails waiting for you.')
     + sec('keys', 'Sign-ins & keys', keys.map(c => dashCard(c)), 'paste secrets only in Personal Assistant', 'Nothing needed.')
     + `<div class="card mut small">Secrets (tokens, keys, codes) go only into the masked box in <a href="${PA_CHAT}">Personal Assistant's chat ›</a></div>`
     + sec('ideas', 'Ideas', ideas.map(c => dashCard(c)), 'Develop this = Personal Assistant passes it to the team', 'No ideas yet.')

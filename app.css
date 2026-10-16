@@ -88,3 +88,4 @@ a.btn{display:block;text-align:center;text-decoration:none}
 .tag.due{background:#fde8e4;color:#9b2c1a}.dimg{width:100%;border-radius:10px;margin-top:8px}.card.tstat{display:block}
 .bsum.main .sumtxt{font-size:16px;font-weight:600;line-height:1.4;margin-top:4px}#summary .bsum{margin-bottom:8px}details.since .li,#decided .li{display:flex;gap:8px;margin-top:8px}
 .card.goal .gteam{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}.tag.goal-not-started{background:#f4f0e9;color:var(--mut)}.tag.goal-in-progress{background:#fff2d6;color:#7a5200}.tag.goal-done-with-proof{background:#e6f4ea;color:#1e5c33}
+.tag.goal-drafts-ready-for-your-yes{background:#e3ecfb;color:#1d4f9c}
