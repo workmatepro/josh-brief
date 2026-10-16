@@ -381,6 +381,7 @@ function dayView(k) {
 }
 
 // ---- LIVING DASHBOARD (0013): Top 3 · tick list · emails · sign-ins & keys · ideas · team status. Every button writes via rpc dash_act.
+const linkify = t => esc(t).replace(/https:\/\/[^\s<]+/g, u => `<a class="lnk" href="${u}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Open link ↗</a>`);
 const PA_CHAT = 'grokbot://app/v1/agent?id=d2686305-4827-4bea-a14f-58695a8dce05';
 const safeUrl = u => /^(https:\/\/|grokbot:\/\/|#\/)/.test(String(u || '')) ? String(u) : null;
 const dLinks = ls => (ls || []).map(l => { const u = safeUrl(l.url); if (!u) return '';
@@ -390,29 +391,33 @@ const ACT = { done: 'Marked done', reopen: 'Reopened', dismiss: 'Not now', devel
 const dashOf = (sec, f = () => true) => (D.dash || []).filter(c => c.section === sec && f(c)).sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || a.rank - b.rank);
 function dashCard(c, ro) {
   const last = (c.acts || [])[0], closed = c.status !== 'open', fam = c.department === 'family-personal';
+  const needsYes = c.section === 'email' && /your yes/i.test(c.title);
   const tag = `<span class="tag">${esc(deptLabel(c))}</span>${c.ref ? `<span class="tag ref">${esc(c.ref)}</span>` : ''}${c.due ? `<span class="tag due">due ${esc(dayLabel(c.due))}</span>` : ''}`;
   let btns = '';
   if (!ro && !fam) {
     if (c.section === 'idea') btns = `<div class="yn"><button class="y" data-dact="${c.id}" data-a="develop">Develop this</button><button class="n" data-dact="${c.id}" data-a="dismiss">Not now</button></div>
       <div class="cmrow"><input placeholder="Add to this idea" data-dnote="${c.id}" aria-label="Note on idea"><button class="mini" data-dact="${c.id}" data-a="note">Add</button></div>`;
     else if (c.section !== 'status') btns = closed ? `<div class="yn"><button class="n" data-dact="${c.id}" data-a="reopen">Reopen</button></div>`
-      : `<div class="yn"><button class="y" data-dact="${c.id}" data-a="done">Done</button><button class="n" data-dact="${c.id}" data-a="dismiss">Not now</button></div>`;
+      : `<div class="yn"><button class="y" data-dact="${c.id}" data-a="done">${c.section === 'email' && /your yes/i.test(c.title) ? 'Approve' : 'Done'}</button><button class="n" data-dact="${c.id}" data-a="dismiss">Not now</button></div>`;
   } else if (fam && !ro) btns = `<a class="lnk" href="#/d/family">Open Family ›</a>`;
   const notes = (c.acts || []).filter(a => a.action === 'note').slice(0, 3).map(a => `<div class="cmt">💬 ${esc(a.note)} <span class="tag">sent to ${esc(deptLabel(c))}</span></div>`).join('');
   const img = c.section === 'idea' ? (safeUrl(c.image_url) && c.image_url.startsWith('https://') ? `<img class="dimg" src="${esc(c.image_url)}" alt="">` : '') : '';
   return `<div class="card dash ${closed ? 'closed' : ''}" data-card="${c.id}" data-sec="${c.section}">${tag}<b class="q">${esc(c.title)}</b>${c.body ? `<div class="mut">${esc(c.body)}</div>` : ''}${img}
-    ${c.links && c.links.length ? `<div class="dlinks">${dLinks(c.links)}</div>` : ''}${btns}${notes}
-    ${last ? `<div class="mut small done-line">✓ ${ACT[last.action] || last.action} · ${fmtT(last.created_at)} · ${last.action === 'done' || last.action === 'dismiss' || last.action === 'reopen' ? 'logged' : 'Personal Assistant routes it to ' + esc(deptLabel(c))}</div>` : ''}</div>`;
+    ${c.links && c.links.length ? `<div class="dlinks">${dLinks(c.links)}</div>` : ''}${btns}${needsYes && !closed ? '<div class="mut small">Approve goes to Personal Assistant, which sends it. The app never sends email itself.</div>' : ''}${notes}
+    ${last ? `<div class="mut small done-line">✓ ${needsYes && last.action === 'done' ? 'Approved' : ACT[last.action] || last.action} · ${fmtT(last.created_at)} · ${last.action === 'done' || last.action === 'dismiss' || last.action === 'reopen' ? 'logged' : 'Personal Assistant routes it to ' + esc(deptLabel(c))}</div>` : ''}</div>`;
 }
 function tickList(ro) {
-  const t = (api.todos() || { items: [] }).items, left = t.filter(x => !x.done).length;
-  return `<section id="tick"><h2>Your tick list <span class="sub">${left} left</span></h2><div class="card list">${t.map(x => `<label class="todo ${x.done ? 'd' : ''}"><input type="checkbox" data-todo="${x.id}" ${x.done ? 'checked' : ''} ${ro ? 'disabled' : ''}><span>${esc(x.text)}${x.carried ? ' <span class="tag">carried over</span>' : ''}</span></label>`).join('') || '<div class="mut">Nothing on the list.</div>'}
+  const rk = x => (x.done ? 2 : 0) + (/^URGENT/i.test(x.text) ? 0 : 1), t = [...(api.todos() || { items: [] }).items].sort((a, b) => rk(a) - rk(b)), left = t.filter(x => !x.done).length;
+  return `<section id="tick"><h2>Your tick list <span class="sub">${left} left</span></h2><div class="card list">${t.map(x => `<label class="todo ${x.done ? 'd' : ''}"><input type="checkbox" data-todo="${x.id}" ${x.done ? 'checked' : ''} ${ro ? 'disabled' : ''}><span>${linkify(x.text)}${x.carried ? ' <span class="tag">carried over</span>' : ''}</span></label>`).join('') || '<div class="mut">Nothing on the list.</div>'}
     ${ro ? '' : `<div class="cmrow"><input id="newtodo" placeholder="Add a to-do"><button class="mini" id="addtodo">Add</button></div>`}</div></section>`;
 }
 function briefSummaries() {
   const bs = D.briefsToday || [], m = bs.filter(b => b.kind !== 'night').slice(-1)[0], n = bs.filter(b => b.kind === 'night').slice(-1)[0];
-  const one = (lbl, b, when) => `<div class="card bsum"><div class="lbl">${lbl}</div>${b ? `<b>${esc((b.content && (b.content.summary || (b.content.focus && b.content.focus.area))) || 'Published')}</b><div class="mut small">Refreshed ${fmtT(b.published_at)}</div>` : `<div class="mut">Arrives ${when}.</div>`}</div>`;
-  return `<section class="bsums">${one('Morning brief', m, 'about 07:10')}${one('Evening brief', n, 'about 22:00')}</section>`;
+  const txt = b => (b && b.content && (b.content.summary || (b.content.focus && b.content.focus.area))) || '';
+  const since = (m && m.content && Array.isArray(m.content.since)) ? m.content.since : [];
+  return `<section id="summary"><div class="card bsum main"><div class="lbl">Morning brief${m ? ' · ' + fmtT(m.published_at) : ''}</div>${m ? `<div class="sumtxt">${esc(txt(m) || 'Published.')}</div>` : '<div class="mut">Arrives about 07:10.</div>'}
+    ${since.length ? `<details class="since"><summary class="mini">Overnight (${since.length})</summary>${since.map(x => `<div class="li"><span class="dot ${esc(x.status)}"></span><div><b>${esc(x.item)}</b><div class="mut small">${esc(x.outcome)}</div></div></div>`).join('')}</details>` : ''}</div>
+    <div class="card bsum"><div class="lbl">Evening brief</div>${n ? `<div class="sumtxt">${esc(txt(n) || 'Published.')}</div><div class="mut small">${fmtT(n.published_at)}</div>` : '<div class="mut">Arrives about 22:00.</div>'}</div></section>`;
 }
 function dashTop(k, ro, d) {
   if (ro) return '';
@@ -426,7 +431,16 @@ function dashTop(k, ro, d) {
     + sec('keys', 'Sign-ins & keys', keys.map(c => dashCard(c)), 'paste secrets only in Personal Assistant', 'Nothing needed.')
     + `<div class="card mut small">Secrets (tokens, keys, codes) go only into the masked box in <a href="${PA_CHAT}">Personal Assistant's chat ›</a></div>`
     + sec('ideas', 'Ideas', ideas.map(c => dashCard(c)), 'Develop this = Personal Assistant passes it to the team', 'No ideas yet.')
+    + decidedToday(k, d)
     + `<section id="teams"><h2>Where each team is <span class="sub">tap for the team page</span></h2>${status.map(c => c.tile ? `<a class="card link tstat" href="#/d/${c.tile}"><span class="tag">${esc(deptLabel(c))}</span><b>${esc(c.title)}</b><div class="mut small">${esc(c.body || '')} · ${fmtT(c.updated_at)}</div></a>` : dashCard(c)).join('')}</section>`;
+}
+function decidedToday(k, d) {
+  const cards = (D.dash || []).filter(c => c.status !== 'open' && c.section !== 'status' && ukDate(c.updated_at) === k);
+  const items = d.decisions.filter(q => q.relay), todos = ((api.todos() || {}).items || []).filter(t => t.done);
+  const rows = [...items.map(q => `<div class="li"><span class="dot done"></span><div><b>${esc(q.q)}</b><div class="mut small">${q.relay.reason === 'already_done' ? 'Already fixed' : q.relay.answer === 'yes' ? 'You said yes' : 'You said no'} · ${esc(q.relay.note)}</div></div></div>`),
+    ...cards.map(c => `<div class="li"><span class="dot done"></span><div><b>${esc(c.title)}</b><div class="mut small">${esc(deptLabel(c))} · ${esc(c.body || '')}</div></div></div>`),
+    ...todos.map(t => `<div class="li"><span class="dot done"></span><div><b>${esc(t.text)}</b><div class="mut small">Ticked</div></div></div>`)];
+  return rows.length ? `<section id="decided"><h2>Settled today <span class="sub">${rows.length}</span></h2><details class="card list"><summary class="mini">Show what's settled</summary>${rows.join('')}</details></section>` : '';
 }
 function wireDash(v) {
   v.querySelectorAll('[data-dact]').forEach(b => b.onclick = async () => {
@@ -489,7 +503,7 @@ function reportView(slug, rid) {
 
 function todoView() {
   const t = api.todos().items;
-  return `<section><h2>Your to-do <span class="sub">${t.filter(x => !x.done).length} left</span></h2>` + t.map(x => `<label class="card todo ${x.done ? 'd' : ''}"><input type="checkbox" data-todo="${x.id}" ${x.done ? 'checked' : ''}><span>${esc(x.text)}${x.carried ? '<br><span class="tag">Carried over</span>' : ''}</span></label>`).join('') +
+  return `<section><h2>Your to-do <span class="sub">${t.filter(x => !x.done).length} left</span></h2>` + t.map(x => `<label class="card todo ${x.done ? 'd' : ''}"><input type="checkbox" data-todo="${x.id}" ${x.done ? 'checked' : ''}><span>${linkify(x.text)}${x.carried ? '<br><span class="tag">Carried over</span>' : ''}</span></label>`).join('') +
     `<div class="cmrow"><input id="newtodo" placeholder="Add a to-do"><button class="mini" id="addtodo">Add</button></div><p class="mut small">Assumption: anything not ticked carries over to tomorrow.</p></section>`;
 }
 function moreView() {
