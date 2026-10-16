@@ -88,8 +88,8 @@ const LiveApi = {
     });
     const projs = projects.filter(p => tileOfDept[p.department]).map(p => ({ id: p.id, dept: tileOfDept[p.department], title: p.title, status: p.status, updated_at: p.updated_at, summary: p.summary, report_id: p.report_id,
       links: [], items: pitems.filter(x => x.project_id === p.id).map(x => ({ id: x.id, kind: x.kind, title: x.title, one_line: x.one_line, detail_md: x.detail_md, ref: x.ref, needs_answer: x.needs_answer, links: x.links })) }));
-    const tiles = Object.keys(TILE_NAMES).map(t => { const latest = projs.filter(p => p.dept === t).sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
-      return { slug: t, name: TILE_NAMES[t], bot: TILE_NAMES[t].split(' ')[0], avatar: null, private: t === 'family', summary: t === 'family' ? 'Private item: open in Family' : latest ? latest.title : 'Nothing new yet.' }; });
+    const tiles = Object.keys(TILE_NAMES).map(t => { const lastUpd = updates.find(u => tileOfDept[u.department] === t), latest = projs.filter(p => p.dept === t).sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
+      return { slug: t, name: TILE_NAMES[t], bot: TILE_NAMES[t].split(' ')[0], avatar: null, private: t === 'family', summary: t === 'family' ? 'Private item: open in Family' : lastUpd ? lastUpd.text : latest ? latest.title : 'Nothing new yet.' }; });
     const priv = reports.filter(r => r.is_private), pub = reports.filter(r => !r.is_private && tileOfDept[r.department]);
     this.reads = new Set(reports.filter(r => r.read_at).map(r => r.id));
     const carried = todos.filter(t => !t.done && t.iso_date < today), todays = todos.filter(t => t.iso_date === today);
@@ -138,27 +138,44 @@ let D, days, route = [];
 // Auth redirect (magic-link fallback only; main flow is the 6-digit code) = current origin + path, so it works under /josh-brief/ and locally.
 const REDIRECT = location.origin + location.pathname;   // live: auth.signInWithOtp({email, options:{shouldCreateUser:false, emailRedirectTo: REDIRECT}})
 // ---- 6-digit code sign-in. Live: signInWithOtp (shouldCreateUser true until Josh's first login) + verifyOtp type 'email'. Demo: any 6 digits.
+let signedIn = false;
 function signIn(msg) {
-  $('#view').innerHTML = `<div class="card signin"><h2>Sign in</h2>${msg ? `<p class="bad-msg">${esc(msg)}</p>` : ''}<p class="mut">We'll email a 6-digit code. Type it here, inside the app (email links don't work in home-screen apps on iPhone).</p>
-   <input id="em" type="email" value="${DEMO ? 'josh@example.com' : ''}" placeholder="Email" autocomplete="email"><button class="btn" id="send">Email me a code</button>
-   <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" hidden><button class="btn" id="ver" hidden>Sign in</button>
-   <p class="mut small" id="smsg">${DEMO ? 'Demo: any 6 digits work.' : 'The code expires in 10 minutes.'}</p></div>`;
-  const em = () => $('#em').value.trim().toLowerCase(), say = t => { $('#smsg').textContent = t; };
+  signedIn = false;
+  $('#view').innerHTML = `<div class="card signin"><h2>Sign in</h2><p class="bad-msg" id="smsg2"${msg ? '' : ' hidden'}>${esc(msg || '')}</p><p class="mut">We'll email a 6-digit code. Type it here, inside the app (email links don't work in home-screen apps on iPhone). The home-screen app and Safari keep separate sign-ins, so sign in once in the one you use.</p>
+   <input id="em" type="email" value="${DEMO ? 'josh@example.com' : esc(LS.get('email', JOSH_EMAIL))}" placeholder="Email" autocomplete="email" autocapitalize="off" autocorrect="off">
+   <button class="btn" id="send" type="button">Email me a code</button>
+   <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" hidden><button class="btn" id="ver" type="button" hidden>Sign in</button>
+   <p class="smsg" id="smsg" role="status">${DEMO ? 'Demo: any 6 digits work.' : 'The code expires in 10 minutes.'}</p></div>`;
+  const em = () => $('#em').value.trim().toLowerCase(), say = (t, bad) => { const m = $('#smsg'); m.textContent = t; m.className = 'smsg' + (bad ? ' bad-msg' : ' ok-msg'); m.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
   $('#send').onclick = async () => {
-    if (!DEMO && em() !== JOSH_EMAIL) return say('This brief is private to Josh.');
-    if (!DEMO) { $('#send').disabled = true; const { error } = await api.sendCode(em()); $('#send').disabled = false; if (error) return say('Could not send the code: ' + error.message); }
-    $('#code').hidden = $('#ver').hidden = false; $('#code').focus(); say('Code sent. Check your email.');
+    const b = $('#send');
+    if (!em()) return say('Type your email first.', 1);
+    if (!DEMO && em() !== JOSH_EMAIL) return say('This brief is private to Josh. Check the email address.', 1);
+    if (!DEMO) { b.disabled = true; b.textContent = 'Sending…'; let error; try { ({ error } = await api.sendCode(em())); } catch (e) { error = e; }
+      b.disabled = false; b.textContent = 'Email me a code again'; if (error) return say('Could not send the code: ' + error.message, 1); LS.set('email', em()); }
+    $('#code').hidden = $('#ver').hidden = false; $('#code').focus(); say('Code sent. Check your email, then type the 6 digits here.');
   };
   $('#ver').onclick = async () => {
-    const c = $('#code').value.trim(); if (!/^\d{6}$/.test(c)) { $('#code').classList.add('bad'); return; }
+    const c = $('#code').value.trim(); if (!/^\d{6}$/.test(c)) { $('#code').classList.add('bad'); return say('The code is 6 digits.', 1); }
     if (DEMO) { LS.set('session', { at: Date.now() }); return boot2(); }
-    $('#ver').disabled = true; const { error } = await api.verify(em(), c); $('#ver').disabled = false;
-    if (error) return say('That code did not work: ' + error.message);
+    const b = $('#ver'); b.disabled = true; b.textContent = 'Checking…'; let error; try { ({ error } = await api.verify(em(), c)); } catch (e) { error = e; }
+    b.disabled = false; b.textContent = 'Sign in';
+    if (error) return say('That code did not work: ' + error.message, 1);
     boot();
   };
 }
+// Tabs work from the very first paint. Signed out, they say so instead of doing nothing.
+function bindTabs() { document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  if (!signedIn) { const m = $('#smsg'); if (m) { m.textContent = 'Sign in first: tap "Email me a code".'; m.className = 'smsg bad-msg'; m.scrollIntoView({ block: 'center' }); } return; }
+  go(b.dataset.r); }); }
+// Any script error shows on screen instead of silently freezing buttons.
+addEventListener('error', e => { const v = $('#view'); if (v && !v.querySelector('.jserr')) v.insertAdjacentHTML('afterbegin', `<div class="card jserr bad-msg">Something broke: ${esc(e.message)}. Pull down to reload.</div>`); });
+addEventListener('unhandledrejection', e => { const v = $('#view'); if (v && !v.querySelector('.jserr')) v.insertAdjacentHTML('afterbegin', `<div class="card jserr bad-msg">Something broke: ${esc((e.reason && e.reason.message) || e.reason)}. Pull down to reload.</div>`); });
 
+let authHooked = false;
 async function boot() {
+  bindTabs();
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});   // ask iOS/Chrome not to evict the sign-in
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
   document.getElementById('ex').hidden = !DEMO;
   if (DEMO) {
@@ -167,7 +184,10 @@ async function boot() {
     return boot2();
   }
   if (!window.supabase) return signIn('Could not load the sign-in library. Check your connection.');
-  const s = await api.session();
+  let s = null; try { s = await api.session(); } catch (e) {}
+  if (!authHooked && !DEMO) try { authHooked = true; const c = api.client();
+    if (c.auth.onAuthStateChange) c.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT' && signedIn) signIn('You were signed out. Sign in again with a code.'); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { c.auth.startAutoRefresh?.(); c.auth.getSession(); } else c.auth.stopAutoRefresh?.(); }); } catch (e) {}
   if (!s) return signIn();
   if (!(await api.isJosh())) {
     $('#view').innerHTML = `<div class="card signin"><h2>Signed in</h2><p>You're signed in as ${esc(s.user.email)}, but this account isn't set up for the brief yet. Systems links it after the first sign-in.</p><button class="btn ghost" id="signout">Sign out</button></div>`;
@@ -179,7 +199,7 @@ async function boot2() {
   D = await api.load();
   days = Object.keys(D.days).sort().reverse();               // Today = newest iso_date (live: today's UK date)
   if (DEMO) carryOver();
-  document.querySelectorAll('nav button').forEach(b => b.onclick = () => go(b.dataset.r));
+  signedIn = true; bindTabs();
   addEventListener('hashchange', draw);
   let x0 = null, y0 = null;
   addEventListener('touchstart', e => { x0 = (e.target.closest && e.target.closest('.carousel')) ? null : e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });

@@ -80,3 +80,6 @@ details.em summary{display:flex;justify-content:space-between;align-items:center
 .big3{display:grid;grid-template-columns:repeat(3,1fr);text-align:center;margin-bottom:8px}.big3 b{display:block;font:400 34px/1 "Bebas Neue",Impact,sans-serif;color:var(--o)}.big3 span{font-size:11.5px;color:var(--mut)}
 body.night{--bg:#14120E;--card:#201D17;--line:#3A342A;--txt:#F4F0E9;--mut:#B5AC9F}body.night .tile.priv{background:#2A2433}body.night header{background:#0B0A08}
 a.btn{display:block;text-align:center;text-decoration:none}
+.smsg{font-size:14px;margin:12px 0 0;padding:10px 12px;border-radius:10px;background:#f4f0e9;color:var(--txt)}
+.bad-msg{background:#fde8e4;color:#9b2c1a;font-weight:600;padding:10px 12px;border-radius:10px}.ok-msg{background:#e6f4ea;color:#1e5c33;font-weight:600}
+.btn:disabled{opacity:.6}.btn:active{transform:scale(.98)}
