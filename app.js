@@ -424,7 +424,7 @@ function dashTop(k, ro, d) {
   const sec = (id, t, arr, sub = '', empty = '') => `<section id="${id}"><h2>${t}${sub ? ` <span class="sub">${sub}</span>` : ''}</h2>${arr.length ? arr.join('') : `<div class="card mut">${empty}</div>`}</section>`;
   const top = dashOf('top3').filter(c => c.status === 'open').slice(0, 3), openEm = d.emails.filter(m => !['approved', 'declined'].includes(api.state(m.id).status));
   const keys = dashOf('key'), ideas = dashOf('idea', c => c.status !== 'dismissed'), status = dashOf('status');
-  return briefSummaries()
+  return briefSummaries() + goalSection()
     + sec('top3', 'Top 3 right now', top.map(c => dashCard(c)), '', 'Nothing urgent. 🎉')
     + tickList(false)
     + sec('emails', 'Emails for you', [...d.emails.map(m => emailCard(m, false)), ...dashOf('email').map(c => dashCard(c))], `${openEm.length + dashOf('email', c => c.status === 'open').length} waiting`, 'No emails waiting for you.')
@@ -433,6 +433,14 @@ function dashTop(k, ro, d) {
     + sec('ideas', 'Ideas', ideas.map(c => dashCard(c)), 'Develop this = Personal Assistant passes it to the team', 'No ideas yet.')
     + decidedToday(k, d)
     + `<section id="teams"><h2>Where each team is <span class="sub">tap for the team page</span></h2>${status.map(c => c.tile ? `<a class="card link tstat" href="#/d/${c.tile}"><span class="tag">${esc(deptLabel(c))}</span><b>${esc(c.title)}</b><div class="mut small">${esc(c.body || '')} · ${fmtT(c.updated_at)}</div></a>` : dashCard(c)).join('')}</section>`;
+}
+function goalSection() {
+  const g = dashOf('goal'); if (!g.length) return '';
+  const main = g.find(c => c.department === 'briefs'), teams = g.filter(c => c !== main);
+  const pill = p => `<span class="tag goal-${esc((p || 'not started').replace(/\s+/g, '-'))}">${esc(p || 'not started')}</span>`;
+  return `<section id="goal"><h2>Today's goal</h2><div class="card goal">${main ? `<b>${esc(main.body)}</b>` : ''}
+    ${teams.map(c => `<div class="gteam"><div class="row">${pill(c.progress)}</div><div>${esc(c.body)}</div></div>`).join('')}
+    <div class="mut small">Tracked to done in the evening brief.</div></div></section>`;
 }
 function decidedToday(k, d) {
   const cards = (D.dash || []).filter(c => c.status !== 'open' && c.section !== 'status' && ukDate(c.updated_at) === k);
