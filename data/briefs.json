@@ -1,0 +1,47 @@
+{
+ "example": true,
+ "days": {},
+ "todos": [],
+ "tiles": [
+  {
+   "slug": "tech",
+   "name": "Tech",
+   "bot": "Tech",
+   "avatar": null,
+   "summary": ""
+  },
+  {
+   "slug": "business",
+   "name": "Business",
+   "bot": "Business",
+   "avatar": null,
+   "summary": ""
+  },
+  {
+   "slug": "marketing",
+   "name": "Marketing / Visuals",
+   "bot": "Marketing",
+   "avatar": null,
+   "summary": ""
+  },
+  {
+   "slug": "support",
+   "name": "Support",
+   "bot": "Support",
+   "avatar": null,
+   "summary": ""
+  },
+  {
+   "slug": "family",
+   "name": "Family",
+   "bot": "Family",
+   "avatar": null,
+   "private": true,
+   "summary": ""
+  }
+ ],
+ "projects": [],
+ "family": [],
+ "updates": [],
+ "reports": []
+}
