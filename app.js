@@ -27,6 +27,8 @@ const MockApi = {
   markSeen(id) { const s = this.seen(); if (!s.has(id)) { s.add(id); LS.set('seen', [...s]); this.log('opened', id); } },        // live: rpc mark_report_read / per-project seen
   todos() { return LS.get('todos', null); },
   setTodos(t) { LS.set('todos', t); },
+  async dashAct(id, action, note) { const c = (this.data.dash || []).find(x => x.id === id); if (!c) return; (c.acts ??= []).unshift({ action, note, created_at: new Date().toISOString() });
+    if (['done', 'dismiss', 'reopen'].includes(action)) c.status = action === 'done' ? 'done' : action === 'dismiss' ? 'dismissed' : 'open'; this.log('dash_' + action, id, { note }); },
   async tickTodo(id, done) { const t = this.todos(); t.items.find(x => x.id === id).done = done; this.setTodos(t); this.log('todo_tick', id); },
   async addTodo(text) { const t = this.todos(); t.items.push({ id: 't' + Date.now(), text, done: false }); this.setTodos(t); this.log('todo_add', text); },
   activity() { return LS.get('action_log', []); },
@@ -99,6 +101,11 @@ const LiveApi = {
       updates: updates.filter(u => tileOfDept[u.department]).map(u => ({ id: u.id, at: u.created_at, dept: tileOfDept[u.department], bot: u.author_bot, text: u.text })),
       todos: [...carried.map(t => ({ id: t.id, text: t.text, done: t.done, carried: true })), ...todays.map(t => ({ id: t.id, text: t.text, done: t.done }))] };
     this.log_rows = logs;
+    const opt = async (t, b) => { try { return await this.q(t, b); } catch (e) { return []; } };   // tolerate a missing table (older DB)
+    const [cards, acts] = await Promise.all([opt('dash_cards', x => x.order('rank')), opt('dash_actions', x => x.order('created_at', { ascending: false }).limit(300))]);
+    this.data.dash = cards.map(c => ({ ...c, tile: tileOfDept[c.department] || null, acts: acts.filter(a => a.card_id === c.id) }));
+    this.data.tileOfDept = tileOfDept; this.data.deptName = Object.fromEntries(depts.map(d => [d.slug, d.name]));
+    this.data.briefsToday = briefs.filter(b => b.iso_date === today).sort((a, b) => (a.published_at || '').localeCompare(b.published_at || ''));
     return this.data;
   },
   state(id) { return this.st[id] || {}; },
@@ -120,6 +127,7 @@ const LiveApi = {
   markSeen(id) { const s = new Set(LS.get('seen', [])); if (s.has(id)) return; s.add(id); LS.set('seen', [...s]);
     if ((this.data.reports || []).some(r => r.id === id)) this.client().rpc('mark_report_read', { p_id: id }); },
   todos() { return { date: ukToday(), items: this.data.todos }; },
+  async dashAct(id, action, note) { return this.must(this.client().rpc('dash_act', { p_card: id, p_action: action, p_note: note || null })); },
   async tickTodo(id, done) { return this.must(this.client().from('todos').update({ done, done_at: done ? new Date().toISOString() : null }).eq('id', id)); },
   async addTodo(text) { const d = ukToday(); return this.must(this.client().from('todos').insert({ text, iso_date: d, first_date: d, added_by: 'josh' })); },
   activity() { return (this.log_rows || []).filter(l => l.actor === 'josh').slice(0, 8).reverse().map(l => ({ at: l.at, action: l.action, item: l.outcome || '' })); },
@@ -348,6 +356,7 @@ function dayView(k) {
   const deptOpen = ro ? [] : openDeptItems().map(({ it, p }) => `<a class="card link" href="#/d/${p.dept}/${p.id}/${it.id}"><span class="tag">${esc(tileOf(p.dept).name)}</span>${it.ref ? `<span class="tag ref">${esc(it.ref)}</span>` : ''}<b class="q">${esc(it.title)}</b><span class="mut small">Open to ${it.kind === 'fix' ? 'Approve or Reject' : 'answer Yes or No'} ›</span></a>`);
   const sec = (t, arr, sub = '') => arr.length ? `<section><h2>${t}${sub ? ` <span class="sub">${sub}</span>` : ''}</h2>${arr.join('')}</section>` : '';
   let h = live;
+  if (night && !ro) h += dashTop(k, ro, d);
   if (night) {
     const today = k, log = api.activity().filter(a => ukDate(a.at) === ukDate(new Date().toISOString()));
     const openMorning = [...d.decisions.filter(q => !api.state(q.id).answer), ...d.emails.filter(m => !['approved', 'declined'].includes(api.state(m.id).status)), ...d.ideas.filter(x => !api.state(x.id).answer), ...d.questions.filter(q => !api.state(q.id).answer)];
@@ -356,10 +365,11 @@ function dayView(k) {
     h += `<section><h2>Carried over from this morning <span class="sub">${openMorning.length + deptOpen.length} open</span></h2>${[...decs.filter((_, j) => !api.state(d.decisions[j].id).answer), ...d.emails.filter(m => !['approved', 'declined'].includes(api.state(m.id).status)).map(m => emailCard(m, false)), ...ideas.filter((_, j) => !api.state(d.ideas[j].id).answer), ...qs.filter((_, j) => !api.state(d.questions[j].id).answer), ...deptOpen].join('') || '<div class="card mut">Nothing left open. 🎉</div>'}</section>`;
     h += `<section><h2>Done today</h2>${tilesRow()}</section>${sec('All updates today', [upd])}`;
   } else {
+    h += dashTop(k, ro, d);
     h += focus;
     if (!ro) h += `<section><h2>Your team <span class="sub">tap a tile</span></h2>${tilesRow()}</section>`;
     h += sec('Needs you', [...deptOpen], ro ? '' : 'from departments');
-    h += sec('Questions for you', qs) + sec('Decisions', decs) + sec('Emails to check', d.emails.map(m => emailCard(m, ro))) + sec('Ideas from the team', ideas);
+    h += sec('Questions for you', qs) + sec('Decisions', decs) + (ro ? sec('Emails to check', d.emails.map(m => emailCard(m, ro))) : '') + sec(ro ? 'Ideas from the team' : 'Quick reactions', ideas);
     h += `<section><h2>${ro ? 'Updates that day' : 'Live updates'}</h2>${upd}</section>`;
     const done = d.since.filter(s => ['done', 'sent'].includes(s.status)).length;
     h += `<section><h2>Since last brief <span class="sub">${done}/${d.since.length} done</span></h2>` + (d.since.length ? `<div class="card list">` + d.since.map(s => `<div class="li"><span class="dot ${s.status}"></span><div><b>${esc(s.you)}</b> ${esc(s.item)}<div class="mut small">${esc(s.outcome)}</div>${ownerTag(s.owner)}<span class="tag st ${s.status}">${esc(s.status.replace('_', ' '))}</span></div></div>`).join('') + `</div>` : '<div class="card mut">Nothing logged.</div>') + `</section>`;
@@ -367,6 +377,63 @@ function dayView(k) {
   h += `<div class="hint">${ro ? 'Earlier day (read-only) · swipe left for newer' : 'Swipe right for earlier days'}</div>
    <div class="daynav">${i < days.length - 1 ? `<a class="mini" href="${dayHash(i + 1)}">‹ ${esc(D.days[days[i + 1]].label)}</a>` : '<span></span>'}${i > 0 ? `<a class="mini" href="${dayHash(i - 1)}">${i - 1 ? esc(D.days[days[i - 1]].label) : 'Today'} ›</a>` : ''}</div>`;
   return h;
+}
+
+// ---- LIVING DASHBOARD (0013): Top 3 · tick list · emails · sign-ins & keys · ideas · team status. Every button writes via rpc dash_act.
+const PA_CHAT = 'grokbot://app/v1/agent?id=d2686305-4827-4bea-a14f-58695a8dce05';
+const safeUrl = u => /^(https:\/\/|grokbot:\/\/|#\/)/.test(String(u || '')) ? String(u) : null;
+const dLinks = ls => (ls || []).map(l => { const u = safeUrl(l.url); if (!u) return '';
+  return `<a class="lnk" href="${esc(u)}"${u.startsWith('https://') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(l.label || u)} ${u.startsWith('#') ? '›' : '↗'}</a>`; }).join('');
+const deptLabel = c => c.tile ? (tileOf(c.tile) || {}).name || c.department : (D.deptName || {})[c.department] || c.department;
+const ACT = { done: 'Marked done', reopen: 'Reopened', dismiss: 'Not now', develop: 'Sent to develop', note: 'Note added' };
+const dashOf = (sec, f = () => true) => (D.dash || []).filter(c => c.section === sec && f(c)).sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || a.rank - b.rank);
+function dashCard(c, ro) {
+  const last = (c.acts || [])[0], closed = c.status !== 'open', fam = c.department === 'family-personal';
+  const tag = `<span class="tag">${esc(deptLabel(c))}</span>${c.ref ? `<span class="tag ref">${esc(c.ref)}</span>` : ''}${c.due ? `<span class="tag due">due ${esc(dayLabel(c.due))}</span>` : ''}`;
+  let btns = '';
+  if (!ro && !fam) {
+    if (c.section === 'idea') btns = `<div class="yn"><button class="y" data-dact="${c.id}" data-a="develop">Develop this</button><button class="n" data-dact="${c.id}" data-a="dismiss">Not now</button></div>
+      <div class="cmrow"><input placeholder="Add to this idea" data-dnote="${c.id}" aria-label="Note on idea"><button class="mini" data-dact="${c.id}" data-a="note">Add</button></div>`;
+    else if (c.section !== 'status') btns = closed ? `<div class="yn"><button class="n" data-dact="${c.id}" data-a="reopen">Reopen</button></div>`
+      : `<div class="yn"><button class="y" data-dact="${c.id}" data-a="done">Done</button><button class="n" data-dact="${c.id}" data-a="dismiss">Not now</button></div>`;
+  } else if (fam && !ro) btns = `<a class="lnk" href="#/d/family">Open Family ›</a>`;
+  const notes = (c.acts || []).filter(a => a.action === 'note').slice(0, 3).map(a => `<div class="cmt">💬 ${esc(a.note)} <span class="tag">sent to ${esc(deptLabel(c))}</span></div>`).join('');
+  const img = c.section === 'idea' ? (safeUrl(c.image_url) && c.image_url.startsWith('https://') ? `<img class="dimg" src="${esc(c.image_url)}" alt="">` : '') : '';
+  return `<div class="card dash ${closed ? 'closed' : ''}" data-card="${c.id}" data-sec="${c.section}">${tag}<b class="q">${esc(c.title)}</b>${c.body ? `<div class="mut">${esc(c.body)}</div>` : ''}${img}
+    ${c.links && c.links.length ? `<div class="dlinks">${dLinks(c.links)}</div>` : ''}${btns}${notes}
+    ${last ? `<div class="mut small done-line">✓ ${ACT[last.action] || last.action} · ${fmtT(last.created_at)} · ${esc(deptLabel(c))} picks it up</div>` : ''}</div>`;
+}
+function tickList(ro) {
+  const t = (api.todos() || { items: [] }).items, left = t.filter(x => !x.done).length;
+  return `<section id="tick"><h2>Your tick list <span class="sub">${left} left</span></h2><div class="card list">${t.map(x => `<label class="todo ${x.done ? 'd' : ''}"><input type="checkbox" data-todo="${x.id}" ${x.done ? 'checked' : ''} ${ro ? 'disabled' : ''}><span>${esc(x.text)}${x.carried ? ' <span class="tag">carried over</span>' : ''}</span></label>`).join('') || '<div class="mut">Nothing on the list.</div>'}
+    ${ro ? '' : `<div class="cmrow"><input id="newtodo" placeholder="Add a to-do"><button class="mini" id="addtodo">Add</button></div>`}</div></section>`;
+}
+function briefSummaries() {
+  const bs = D.briefsToday || [], m = bs.filter(b => b.kind !== 'night').slice(-1)[0], n = bs.filter(b => b.kind === 'night').slice(-1)[0];
+  const one = (lbl, b, when) => `<div class="card bsum"><div class="lbl">${lbl}</div>${b ? `<b>${esc((b.content && (b.content.summary || (b.content.focus && b.content.focus.area))) || 'Published')}</b><div class="mut small">Refreshed ${fmtT(b.published_at)}</div>` : `<div class="mut">Arrives ${when}.</div>`}</div>`;
+  return `<section class="bsums">${one('Morning brief', m, 'about 07:10')}${one('Evening brief', n, 'about 22:00')}</section>`;
+}
+function dashTop(k, ro, d) {
+  if (ro) return '';
+  const sec = (id, t, arr, sub = '', empty = '') => `<section id="${id}"><h2>${t}${sub ? ` <span class="sub">${sub}</span>` : ''}</h2>${arr.length ? arr.join('') : `<div class="card mut">${empty}</div>`}</section>`;
+  const top = dashOf('top3').filter(c => c.status === 'open').slice(0, 3), openEm = d.emails.filter(m => !['approved', 'declined'].includes(api.state(m.id).status));
+  const keys = dashOf('key'), ideas = dashOf('idea', c => c.status !== 'dismissed'), status = dashOf('status');
+  return briefSummaries()
+    + sec('top3', 'Top 3 right now', top.map(c => dashCard(c)), '', 'Nothing urgent. 🎉')
+    + tickList(false)
+    + sec('emails', 'Emails for you', [...d.emails.map(m => emailCard(m, false)), ...dashOf('email').map(c => dashCard(c))], `${openEm.length + dashOf('email', c => c.status === 'open').length} waiting`, 'No emails waiting for you.')
+    + sec('keys', 'Sign-ins & keys', keys.map(c => dashCard(c)), 'paste secrets only in Personal Assistant', 'Nothing needed.')
+    + `<div class="card mut small">Secrets (tokens, keys, codes) go only into the masked box in <a href="${PA_CHAT}">Personal Assistant's chat ›</a></div>`
+    + sec('ideas', 'Ideas', ideas.map(c => dashCard(c)), 'Develop this = the team picks it up', 'No ideas yet.')
+    + `<section id="teams"><h2>Where each team is <span class="sub">tap for the team page</span></h2>${status.map(c => c.tile ? `<a class="card link tstat" href="#/d/${c.tile}"><span class="tag">${esc(deptLabel(c))}</span><b>${esc(c.title)}</b><div class="mut small">${esc(c.body || '')} · ${fmtT(c.updated_at)}</div></a>` : dashCard(c)).join('')}</section>`;
+}
+function wireDash(v) {
+  v.querySelectorAll('[data-dact]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.dact, a = b.dataset.a, inp = v.querySelector(`[data-dnote="${id}"]`), note = inp ? inp.value.trim() : '';
+    if (a === 'note' && !note) { inp.classList.add('bad'); inp.focus(); return; }
+    b.disabled = true; b.textContent = 'Saving…';
+    try { await api.dashAct(id, a, a === 'develop' || a === 'note' ? note : null); } finally { await refresh(); }
+  });
 }
 
 // ---- TEAM: exactly 5 tiles
@@ -379,11 +446,19 @@ function deptView(slug) {
     return `<div class="dhead">${avatar(t, true)}<div><h2>${esc(t.name)}</h2><div class="mut">Kept private. Nothing personal is stored in this app.</div></div></div>
       ${D.family.map(f => `<div class="card priv"><b>${esc(f.summary)}</b><div class="mut small">Pointer: ${esc(f.pointer)}</div></div>`).join('')}`; }
   const ps = projectsOf(slug), open = ps.reduce((n, p) => n + p.items.filter(isOpen).length, 0);
+  const mine = (D.dash || []).filter(c => c.tile === slug), now = mine.filter(c => c.section === 'status'), act = mine.filter(c => ['top3', 'key', 'email'].includes(c.section) && c.status === 'open'), ids = mine.filter(c => c.section === 'idea' && c.status !== 'dismissed');
+  const ups = D.updates.filter(u => u.dept === slug).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8), reps = (D.reports || []).filter(r => r.dept === slug).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const happening = `<section><h2>Happening now</h2>${now.map(c => `<div class="card"><b>${esc(c.title)}</b><div class="mut">${esc(c.body || '')}</div><div class="mut small">${fmtT(c.updated_at)}</div></div>`).join('')}
+     ${ups.length ? `<div class="card list feed">${ups.map(u => `<div class="li"><div><b>${esc(u.bot)}</b> <span class="mut small">${fmtT(u.at)}</span><div>${esc(u.text)}</div></div></div>`).join('')}</div>` : now.length ? '' : '<div class="card mut">No update posted yet today.</div>'}</section>`
+    + (act.length ? `<section><h2>Needs you</h2>${act.map(c => dashCard(c)).join('')}</section>` : '')
+    + (ids.length ? `<section><h2>Ideas</h2>${ids.map(c => dashCard(c)).join('')}</section>` : '');
+  const repsH = reps.length ? `<section><h2>Reports <span class="sub">${reps.length}</span></h2>${reps.map(r => `<a class="card link" href="#/d/${slug}/report/${r.id}"><b>${esc(r.title)}</b><div class="mut small">${esc(r.author)} · ${fmtT(r.created_at)}</div></a>`).join('')}</section>` : '';
   return `<div class="dhead">${avatar(t, true)}<div><h2>${esc(t.name)}</h2><div class="mut">${esc(t.summary)}</div><div class="mut small">${ps.length} project${ps.length === 1 ? '' : 's'} · ${open} need${open === 1 ? 's' : ''} you</div></div></div>
+   ${happening}<h2>Projects</h2>
    <div class="carousel" aria-label="Projects, newest first">${ps.map((p, k) => { const o = p.items.filter(isOpen).length; return `<a class="ppage" href="#/d/${slug}/${p.id}">
      <div class="pn">${k + 1} / ${ps.length}${api.seen().has(p.id) ? '' : ' · <span class="tag new">new</span>'}</div><h3>${esc(p.title)}</h3><p>${esc(p.summary)}</p>
      <div class="pmeta"><span class="tag st ${p.status}">${esc(p.status)}</span>${o ? `<span class="tag act">${o} to decide</span>` : ''}<span class="mut small">${p.items.length} items</span></div><span class="open">Open ›</span></a>`; }).join('')}</div>
-   ${ps.length > 1 ? '<div class="hint">Swipe across for older projects</div>' : ''}`;
+   ${ps.length > 1 ? '<div class="hint">Swipe across for older projects</div>' : ''}${repsH}`;
 }
 const KIND = { persona: 'Who struggles', fix: 'Fixes to approve', decision: 'Decisions', finding: 'Findings', task: 'Tasks' };
 function projectView(slug, pid) {
@@ -443,7 +518,7 @@ function draw(keepScroll) {
   $('#view').innerHTML = crumbs() + v + '<div class="motto-foot">always improving</div>';
   const tabR = di === 0 ? '#/' : r[0] === 'day' ? '#/' : r[0] === 'd' ? '#/team' : '#/' + r[0];
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.r === tabR));
-  wire(k ? D.days[k] : D.days[days[0]]); badge();
+  wire(k ? D.days[k] : D.days[days[0]]); wireDash($('#view')); badge();
   if (keepScroll) scrollTo(0, y);
 }
 
