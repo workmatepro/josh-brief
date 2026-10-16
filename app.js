@@ -260,16 +260,16 @@ const PAIRS = { yn: [['yes', 'Yes'], ['no', 'No']], ar: [['approve', 'Approve'],
 function buttons(id, owner, kind = 'yn', ro = false) {
   const s = api.state(id), [a, b] = PAIRS[kind], label = { yes: 'Yes', no: 'No', approve: 'Approved', reject: 'Rejected', up: 'Thumbs up', down: 'Thumbs down' };
   return `<div class="yn">${[a, b].map(([v, t], k) => `<button class="${k ? 'n' : 'y'} ${s.answer === v ? 'on' : ''}" ${ro ? 'disabled' : ''} data-ans="${esc(id)}" data-v="${v}" data-o="${esc(owner)}" aria-pressed="${s.answer === v}">${t}</button>`).join('')}</div>
-    ${s.answer ? `<div class="mut small done-line">✓ ${label[s.answer]} · logged · ${esc(owner)} will act</div>` : ''}`;
+    ${s.answer ? `<div class="mut small done-line">✓ ${label[s.answer]} · logged · Personal Assistant acts on it</div>` : ''}`;
 }
 function emailCard(m, ro) {
   const s = api.state(m.id), f = s.edit || { to: m.to, subject: m.subject, body: m.body };
   const head = `<div class="row">${ownerTag('Written by ' + m.writer)}<span class="tag">via ${esc(m.lead)}</span></div>`;
-  if (s.status === 'declined') return `<div class="card">${head}<b>${esc(m.subject)}</b><div class="mut">Rejected. ${esc(m.writer)} won't send it.</div>${commentBox(m.id, ro)}</div>`;
+  if (s.status === 'declined') return `<div class="card">${head}<b>${esc(m.subject)}</b><div class="mut">Rejected. Personal Assistant won't send it.</div>${commentBox(m.id, ro)}</div>`;
   if (s.status === 'approved') {
     const r = s.rating;
     return `<div class="card">${head}<b>${esc(s.final.subject)}</b> <span class="tag done">Approved</span>
-      <div class="mut small">${s.edited ? 'You edited it: original and final saved; the changes go to ' + esc(m.writer) + ' to learn from.' : 'Sent as written: logged as successful, no changes.'}</div>
+      <div class="mut small">${s.edited ? 'You edited it: Personal Assistant sends your final version; the changes go to ' + esc(m.writer) + ' to learn from.' : 'Approved as written: Personal Assistant sends it.'}</div>
       ${s.edited ? `<div class="diff">${wordDiff(m.body, s.final.body)}</div>` : ''}
       <div class="rate"><div class="lbl">Rate this email (1–10)</div><div class="nums">${[...Array(10)].map((_, i) => `<button class="n10 ${r && r.score === i + 1 ? 'on' : ''}" data-rate="${m.id}" data-s="${i + 1}" ${ro ? 'disabled' : ''}>${i + 1}</button>`).join('')}</div>
       <textarea rows="2" placeholder="Comment on the rating (optional)" data-ratec="${m.id}" ${ro ? 'disabled' : ''}>${esc(r ? r.comment : '')}</textarea>
@@ -281,7 +281,7 @@ function emailCard(m, ro) {
     <label class="lbl">Subject<input data-f="subject" data-e="${m.id}" value="${esc(f.subject)}" ${ro ? 'disabled' : ''}></label>
     <label class="lbl">Message<textarea rows="6" data-f="body" data-e="${m.id}" ${ro ? 'disabled' : ''}>${esc(f.body)}</textarea></label>
     <div class="yn"><button class="y" data-confirm="${m.id}" ${ro ? 'disabled' : ''}>Approve</button><button class="n" data-rejectmail="${m.id}" ${ro ? 'disabled' : ''}>Reject</button></div>
-    <div class="mut small">Edit anything, then Approve. Nothing is sent until you approve; ${esc(m.writer)} then sends exactly this text.</div></details>
+    <div class="mut small">Edit anything, then Approve. Nothing is sent until you approve. Your approval goes to Personal Assistant, which sends exactly this text.</div></details>
     ${commentBox(m.id, ro)}</div>`;
 }
 // ---- Departments: safe markdown (escape first, then a small whitelist), tiles, reader
@@ -401,7 +401,7 @@ function dashCard(c, ro) {
   const img = c.section === 'idea' ? (safeUrl(c.image_url) && c.image_url.startsWith('https://') ? `<img class="dimg" src="${esc(c.image_url)}" alt="">` : '') : '';
   return `<div class="card dash ${closed ? 'closed' : ''}" data-card="${c.id}" data-sec="${c.section}">${tag}<b class="q">${esc(c.title)}</b>${c.body ? `<div class="mut">${esc(c.body)}</div>` : ''}${img}
     ${c.links && c.links.length ? `<div class="dlinks">${dLinks(c.links)}</div>` : ''}${btns}${notes}
-    ${last ? `<div class="mut small done-line">✓ ${ACT[last.action] || last.action} · ${fmtT(last.created_at)} · ${esc(deptLabel(c))} picks it up</div>` : ''}</div>`;
+    ${last ? `<div class="mut small done-line">✓ ${ACT[last.action] || last.action} · ${fmtT(last.created_at)} · ${last.action === 'done' || last.action === 'dismiss' || last.action === 'reopen' ? 'logged' : 'Personal Assistant routes it to ' + esc(deptLabel(c))}</div>` : ''}</div>`;
 }
 function tickList(ro) {
   const t = (api.todos() || { items: [] }).items, left = t.filter(x => !x.done).length;
@@ -424,7 +424,7 @@ function dashTop(k, ro, d) {
     + sec('emails', 'Emails for you', [...d.emails.map(m => emailCard(m, false)), ...dashOf('email').map(c => dashCard(c))], `${openEm.length + dashOf('email', c => c.status === 'open').length} waiting`, 'No emails waiting for you.')
     + sec('keys', 'Sign-ins & keys', keys.map(c => dashCard(c)), 'paste secrets only in Personal Assistant', 'Nothing needed.')
     + `<div class="card mut small">Secrets (tokens, keys, codes) go only into the masked box in <a href="${PA_CHAT}">Personal Assistant's chat ›</a></div>`
-    + sec('ideas', 'Ideas', ideas.map(c => dashCard(c)), 'Develop this = the team picks it up', 'No ideas yet.')
+    + sec('ideas', 'Ideas', ideas.map(c => dashCard(c)), 'Develop this = Personal Assistant passes it to the team', 'No ideas yet.')
     + `<section id="teams"><h2>Where each team is <span class="sub">tap for the team page</span></h2>${status.map(c => c.tile ? `<a class="card link tstat" href="#/d/${c.tile}"><span class="tag">${esc(deptLabel(c))}</span><b>${esc(c.title)}</b><div class="mut small">${esc(c.body || '')} · ${fmtT(c.updated_at)}</div></a>` : dashCard(c)).join('')}</section>`;
 }
 function wireDash(v) {
