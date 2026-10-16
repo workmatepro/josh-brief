@@ -1,4 +1,4 @@
-:root{--o:#F15622;--bg:#FAF7F2;--card:#fff;--line:#E6DFD3;--mut:#6B6358;--txt:#181510;--g:#30A46C;--r:#E5484D;--a:#F5A524;--b:#3E7BFA;--dark:#181510}
+:root{--o:#F15622;--bg:#E8EAED;--card:#fff;--line:#DCDFE4;--mut:#6B6358;--txt:#181510;--g:#30A46C;--r:#E5484D;--a:#F5A524;--b:#3E7BFA;--dark:#181510}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 Inter,-apple-system,system-ui,sans-serif;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
 .ex{background:#FFE58A;font:700 11px/1 Inter,system-ui;text-align:center;padding:5px;padding-top:calc(5px + env(safe-area-inset-top))}
@@ -89,3 +89,30 @@ a.btn{display:block;text-align:center;text-decoration:none}
 .bsum.main .sumtxt{font-size:16px;font-weight:600;line-height:1.4;margin-top:4px}#summary .bsum{margin-bottom:8px}details.since .li,#decided .li{display:flex;gap:8px;margin-top:8px}
 .card.goal .gteam{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}.tag.goal-not-started{background:#f4f0e9;color:var(--mut)}.tag.goal-in-progress{background:#fff2d6;color:#7a5200}.tag.goal-done-with-proof{background:#e6f4ea;color:#1e5c33}
 .tag.goal-drafts-ready-for-your-yes{background:#e3ecfb;color:#1d4f9c}
+
+/* v15 preview: grey + tiles, team list, hero brief, compact cards */
+.card,.tlist,.hero{box-shadow:0 1px 2px rgba(16,24,40,.06);border-color:transparent}
+section{background:transparent}.tag{background:#EEF0F3}
+.hero{background:linear-gradient(135deg,#181510 0%,#3a2416 55%,#F15622 140%);color:#fff;border-radius:20px;padding:18px 16px 14px;margin:6px 0 10px}
+.hero .lbl{color:#F7B79E;margin:0;text-transform:uppercase;letter-spacing:.06em;font-size:11px}
+.hero .htitle{font:400 34px/1 "Bebas Neue",Impact,sans-serif;letter-spacing:.02em;margin:6px 0 10px}
+.hero .pts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.hero .pt{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.08);border-radius:14px;padding:11px 12px;font:600 15.5px/1.35 Inter,system-ui}
+.hero .pt .n{flex:0 0 30px;height:30px;border-radius:50%;background:var(--o);display:flex;align-items:center;justify-content:center;font:800 15px Inter,system-ui}
+.hero .pt .k{display:block;font:800 11px/1.2 Inter,system-ui;text-transform:uppercase;letter-spacing:.06em;color:#F7B79E;margin-bottom:2px}
+.hero details.since summary{background:rgba(255,255,255,.14);color:#fff}.hero details.since{margin-top:10px}.hero .mut{color:#E9DDD3}
+.bsum.eve{display:flex;gap:8px;align-items:baseline;padding:10px 13px}.bsum.eve .lbl{margin:0}
+.tlist{background:var(--card);border-radius:16px;padding:2px 12px}
+.trow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}.trow:last-child{border:0}
+.trow .av{margin:0;width:44px;height:44px}.trow .tmain{flex:1;min-width:0;display:flex;flex-direction:column}.trow b{font-size:15.5px}
+.trow .tsum{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;color:var(--mut)}
+.pill{min-width:24px;height:24px;border-radius:12px;background:#F5A524;color:#fff;font:800 12px/24px Inter,system-ui;text-align:center;padding:0 7px}.pill.urg{background:var(--r)}
+.chev{color:var(--mut);font-size:20px}.trow.priv .tsum{font-style:italic}
+img.av.img{border-radius:0;background:transparent;object-fit:contain}.av.big.img{width:64px;height:64px}
+.card.dash.urgent{border-left:4px solid var(--r)}
+details.more summary{list-style:none;cursor:pointer}details.more summary::-webkit-details-marker{display:none}details.more[open] summary{display:none}details.more .lnk{color:var(--o);font-weight:700}
+.card.leaving{opacity:0;transform:scale(.97);transition:all .18s}
+#toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);background:#181510;color:#fff;padding:10px 14px;border-radius:12px;font:600 13.5px Inter,system-ui;opacity:0;transition:all .2s;z-index:20;max-width:90%}
+#toast.show{opacity:1;transform:translateX(-50%)}
+.hintline{margin:2px 4px 8px}
+body.night .hero .pt{background:rgba(255,255,255,.06)}

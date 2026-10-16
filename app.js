@@ -74,6 +74,7 @@ const LiveApi = {
       this.q('feedback_questions'), this.q('item_comments'), this.q('ratings'), this.q('departments', x => x.order('sort')), this.q('reports', x => x.order('created_at')),
       this.q('updates', x => x.order('created_at', { ascending: false }).limit(300)), this.q('projects'), this.q('project_items', x => x.order('created_at')), this.q('todos', x => x.order('created_at'))]);
     const today = ukToday(), tileOfDept = Object.fromEntries(depts.map(d => [d.slug, d.tile])), st = {};
+    const BOT_IMG = { tech: 'icons/bots/tech.png', 'marketing-visuals': 'icons/bots/marketing.png', support: 'icons/bots/support.png' };   // real bot avatars (Tech, Marketing, Support); others keep their letter circle
     const TILE_NAMES = { tech: 'Tech', business: 'Business', 'marketing-visuals': 'Marketing / Visuals', support: 'Support', family: 'Family' };
     // per-item state the views read through api.state(id)
     for (const it of items) st[it.id] = { answer: it.answer || undefined, status: it.status === 'draft' ? undefined : it.status === 'declined' ? 'declined' : 'approved',
@@ -102,7 +103,7 @@ const LiveApi = {
     const projs = projects.filter(p => tileOfDept[p.department]).map(p => ({ id: p.id, dept: tileOfDept[p.department], title: p.title, status: p.status, updated_at: p.updated_at, summary: p.summary, report_id: p.report_id,
       links: [], items: pitems.filter(x => x.project_id === p.id).map(x => ({ id: x.id, kind: x.kind, title: x.title, one_line: x.one_line, detail_md: x.detail_md, ref: x.ref, needs_answer: x.needs_answer, links: x.links })) }));
     const tiles = Object.keys(TILE_NAMES).map(t => { const lastUpd = updates.find(u => tileOfDept[u.department] === t), latest = projs.filter(p => p.dept === t).sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
-      return { slug: t, name: TILE_NAMES[t], bot: TILE_NAMES[t].split(' ')[0], avatar: null, private: t === 'family', summary: t === 'family' ? 'Private item: open in Family' : lastUpd ? lastUpd.text : latest ? latest.title : 'Nothing new yet.' }; });
+      return { slug: t, name: TILE_NAMES[t], bot: TILE_NAMES[t].split(' ')[0], avatar: BOT_IMG[t] || null, private: t === 'family', summary: t === 'family' ? 'Private item: open in Family' : lastUpd ? lastUpd.text : latest ? latest.title : 'Nothing new yet.' }; });
     const priv = reports.filter(r => r.is_private), pub = reports.filter(r => !r.is_private && tileOfDept[r.department]);
     this.reads = new Set(reports.filter(r => r.read_at).map(r => r.id));
     const carried = todos.filter(t => !t.done && t.iso_date < today), todays = todos.filter(t => t.iso_date === today);
@@ -330,7 +331,7 @@ const fmtT = iso => new Date(iso).toLocaleString('en-GB', { hour: 'numeric', min
 const ukDate = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
 const tileOf = s => D.tiles.find(t => t.slug === s);
 const initials = n => n.replace(/[^A-Za-z ]/g, ' ').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-const avatar = (t, big) => t.avatar ? `<img class="av ${big ? 'big' : ''}" src="${esc(t.avatar)}" alt="">` : `<span class="av ${big ? 'big' : ''}" data-d="${esc(t.slug)}" aria-hidden="true">${esc(initials(t.name))}</span>`;
+const avatar = (t, big) => t.avatar ? `<img class="av img ${big ? 'big' : ''}" src="${esc(t.avatar)}" alt="">` : `<span class="av ${big ? 'big' : ''}" data-d="${esc(t.slug)}" aria-hidden="true">${esc(initials(t.name))}</span>`;
 const projectsOf = s => D.projects.filter(p => p.dept === s).sort((a, b) => b.updated_at.localeCompare(a.updated_at));   // newest first
 const isOpen = it => it.needs_answer && !api.state(it.id).answer;
 function unread(slug) {
@@ -356,7 +357,20 @@ function crumbs() {
 }
 
 // ---- TODAY (live). Morning until ~18:00 UK, then Night summary.
-function tilesRow() {
+const cap = x => String(x).charAt(0).toUpperCase() + String(x).slice(1);
+const short = (t, n = 9) => { const w = String(t || '').replace(/^[A-Za-z /]+:\s*/, '').split(/\s+/); return w.length > n ? w.slice(0, n).join(' ') + '…' : w.join(' '); };
+function teamRows() {
+  return D.tiles.map(t => { const mine = (D.dash || []).filter(c => c.tile === t.slug && c.status === 'open'), need = mine.filter(c => ['top3', 'email', 'key'].includes(c.section));
+    const urgent = need.some(c => c.section === 'top3' || /urgent/i.test(c.title)), st = mine.find(c => c.section === 'status');
+    return { t, need: need.length, urgent, u: unread(t.slug), latest: t.private ? 'Private' : short(st ? st.title : t.summary) }; })
+   .sort((a, b) => (a.t.private - b.t.private) || (b.urgent - a.urgent) || (b.need - a.need) || (b.u - a.u));
+}
+function teamList() {
+  return `<div class="tlist">${teamRows().map(r => `<a class="trow ${r.t.private ? 'priv' : ''}" href="#/d/${r.t.slug}" aria-label="${esc(r.t.name)}">${avatar(r.t)}
+    <div class="tmain"><b>${esc(r.t.name)}</b><span class="tsum">${esc(r.latest)}</span></div>${r.need ? `<span class="pill ${r.urgent ? 'urg' : ''}">${r.need}</span>` : ''}<span class="chev">›</span></a>`).join('')}</div>`;
+}
+function tilesRow() { return teamList(); }
+function tilesRowOld() {
   return `<div class="tiles5">${D.tiles.map(t => { const u = unread(t.slug); return `<a class="tile ${t.private ? 'priv' : ''}" href="#/d/${t.slug}" aria-label="${esc(t.name)}, ${u} unread">
     ${u ? `<span class="badge">${u}</span>` : ''}${avatar(t)}<b>${esc(t.name)}</b><span class="tsum">${esc(t.summary)}</span></a>`; }).join('')}</div>`;
 }
@@ -366,7 +380,7 @@ function dayView(k) {
   const ups = D.updates.filter(u => ukDate(u.at) === k || (i === 0 && (ukDate(u.at) > days[1] || ukDate(u.at) === ukDate(new Date().toISOString())))).sort((a, b) => b.at.localeCompare(a.at));
   const upd = ups.length ? `<div class="card list feed">${ups.map(u => `<div class="li"><span class="av sm" data-d="${esc(u.dept)}">${esc(initials(u.bot))}</span><div><b>${esc(u.bot)}</b> <span class="mut small">${fmtT(u.at)}</span><div>${esc(u.text)}</div></div></div>`).join('')}</div>` : '<div class="card mut">No updates yet today.</div>';
   const live = ro ? '' : `<div class="live" id="live"><span class="ldot"></span>Live · ${ups.length} update${ups.length === 1 ? '' : 's'} today · last ${ups[0] ? fmtT(ups[0].at) : '–'}</div>`;
-  const focus = `<section><h2>${ro ? 'Focus that day' : "Today's focus"}</h2><div class="card">${d.focus ? `<b>${esc(d.focus.area)}</b><div class="mut">Tech will: ${esc(d.focus.tech)}<br>Marketing will: ${esc(d.focus.marketing)}</div>` : '<b class="none">Focus not agreed</b>'}</div></section>`;
+  const focus = !d.focus && !ro ? '' : `<section><h2>${ro ? 'Focus that day' : "Today's focus"}</h2><div class="card">${d.focus ? `<b>${esc(d.focus.area)}</b><div class="mut">Tech will: ${esc(d.focus.tech)}<br>Marketing will: ${esc(d.focus.marketing)}</div>` : '<b class="none">Focus not agreed</b>'}</div></section>`;
   const qs = d.questions.map(q => { const a = api.state(q.id).answer; return `<div class="card" data-kind="question"><div class="mut small">From ${esc(q.from)} · via ${esc(q.via)}</div><b>${esc(q.q)}</b>
      ${a ? `<div class="cmt">✓ ${esc(a)} <span class="tag">sent back</span></div>` : ro ? '' : `<div class="cmrow"><input placeholder="Your answer" data-qa="${q.id}"><button class="mini" data-qsend="${q.id}">Send</button></div>`}</div>`; });
   const resolved = d.decisions.filter(q => q.relay).map(q => `<div class="card dash closed" data-kind="resolved">${ownerTag(q.owner)}<span class="tag done">Resolved: ${q.relay.reason === 'already_done' ? 'already fixed' : q.relay.answer === 'yes' ? 'Yes' : 'No'}</span><b class="q">${esc(q.q)}</b><div class="mut small">${esc(q.relay.note)}${q.relay.at ? ' · recorded ' + fmtT(q.relay.at) : ''}</div></div>`);
@@ -386,7 +400,6 @@ function dayView(k) {
   } else {
     h += dashTop(k, ro, d);
     h += focus;
-    if (!ro) h += `<section><h2>Your team <span class="sub">tap a tile</span></h2>${tilesRow()}</section>`;
     h += sec('Needs you', [...deptOpen], ro ? '' : 'from departments');
     h += sec('Questions for you', qs) + sec('Decisions', decs) + sec('Resolved elsewhere', resolved, 'answered outside the app') + (ro ? sec('Emails to check', d.emails.map(m => emailCard(m, ro))) : '') + sec(ro ? 'Ideas from the team' : 'Quick reactions', ideas);
     h += `<section><h2>${ro ? 'Updates that day' : 'Live updates'}</h2>${upd}</section>`;
@@ -404,6 +417,8 @@ const PA_CHAT = 'grokbot://app/v1/agent?id=d2686305-4827-4bea-a14f-58695a8dce05'
 const safeUrl = u => /^(https:\/\/|grokbot:\/\/|#\/)/.test(String(u || '')) ? String(u) : null;
 const dLinks = ls => (ls || []).map(l => { const u = safeUrl(l.url); if (!u) return '';
   return `<a class="lnk" href="${esc(u)}"${u.startsWith('https://') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(l.label || u)} ${u.startsWith('#') ? '›' : '↗'}</a>`; }).join('');
+const HEAD = { tech: 'Tech', marketing: 'Marketing', business: 'Business', support: 'Support', systems: 'Systems', scanner: 'Scanner', briefs: 'Briefs', visuals: 'Visuals', 'personal-care': 'Personal Care', 'family-personal': 'Family', pa: 'Personal Assistant' };
+const ownerBot = c => 'Personal Assistant' + (HEAD[c.department] && c.department !== 'pa' ? ' + ' + HEAD[c.department] : '');
 const deptLabel = c => c.tile ? (tileOf(c.tile) || {}).name || c.department : (D.deptName || {})[c.department] || c.department;
 const ACT = { done: 'Marked done', reopen: 'Reopened', dismiss: 'Not now', develop: 'Sent to develop', note: 'Note added' };
 const dashOf = (sec, f = () => true) => (D.dash || []).filter(c => c.section === sec && f(c)).sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || a.rank - b.rank);
@@ -413,15 +428,16 @@ function dashCard(c, ro) {
   const tag = `<span class="tag">${esc(deptLabel(c))}</span>${c.ref ? `<span class="tag ref">${esc(c.ref)}</span>` : ''}${c.due ? `<span class="tag due">due ${esc(dayLabel(c.due))}</span>` : ''}`;
   let btns = '';
   if (!ro && !fam) {
-    if (c.section === 'idea') btns = `<div class="yn"><button class="y" data-dact="${c.id}" data-a="develop">Develop this</button><button class="n" data-dact="${c.id}" data-a="dismiss">Not now</button></div>
+    if (c.section === 'idea') btns = `<div class="yn"><button class="y" data-dact="${c.id}" data-a="develop">Develop this</button><button class="n" data-dact="${c.id}" data-a="dismiss" data-owner="${esc(ownerBot(c))}">Not now</button></div>
       <div class="cmrow"><input placeholder="Add to this idea" data-dnote="${c.id}" aria-label="Note on idea"><button class="mini" data-dact="${c.id}" data-a="note">Add</button></div>`;
     else if (c.section !== 'status') btns = closed ? `<div class="yn"><button class="n" data-dact="${c.id}" data-a="reopen">Reopen</button></div>`
-      : `<div class="yn"><button class="y" data-dact="${c.id}" data-a="done">${c.section === 'email' && /your yes/i.test(c.title) ? 'Approve' : 'Done'}</button><button class="n" data-dact="${c.id}" data-a="dismiss">Not now</button></div>`;
+      : `<div class="yn"><button class="y" data-dact="${c.id}" data-a="done" data-owner="${esc(ownerBot(c))}" data-lbl="${needsYes ? 'Approved' : 'Done'}">${needsYes ? 'Approve' : 'Done'}</button><button class="n" data-dact="${c.id}" data-a="dismiss" data-owner="${esc(ownerBot(c))}">Not now</button></div>`;
   } else if (fam && !ro) btns = `<a class="lnk" href="#/d/family">Open Family ›</a>`;
   const notes = (c.acts || []).filter(a => a.action === 'note').slice(0, 3).map(a => `<div class="cmt">💬 ${esc(a.note)} <span class="tag">sent to ${esc(deptLabel(c))}</span></div>`).join('');
   const img = c.section === 'idea' ? (safeUrl(c.image_url) && c.image_url.startsWith('https://') ? `<img class="dimg" src="${esc(c.image_url)}" alt="">` : '') : '';
-  return `<div class="card dash ${closed ? 'closed' : ''}" data-card="${c.id}" data-sec="${c.section}">${tag}<b class="q">${esc(c.title)}</b>${c.body ? `<div class="mut">${esc(c.body)}</div>` : ''}${img}
-    ${c.links && c.links.length ? `<div class="dlinks">${dLinks(c.links)}</div>` : ''}${btns}${needsYes && !closed ? '<div class="mut small">Approve goes to Personal Assistant, which sends it. The app never sends email itself.</div>' : ''}${notes}
+  const body = c.body || '', cut = body.length > 120 ? body.slice(0, 110).replace(/\s+\S*$/, '') + '…' : body;
+  return `<div class="card dash ${closed ? 'closed' : ''} ${/urgent/i.test(c.title) ? 'urgent' : ''}" data-card="${c.id}" data-sec="${c.section}">${tag}<b class="q">${esc(c.title)}</b>${body ? (cut === body ? `<div class="mut">${esc(body)}</div>` : `<details class="more"><summary class="mut">${esc(cut)} <span class="lnk">More</span></summary><div class="mut">${esc(body)}</div></details>`) : ''}${img}
+    ${c.links && c.links.length ? `<div class="dlinks">${dLinks(c.links)}</div>` : ''}${btns}${needsYes && !closed ? '<div class="mut small">Approve → Personal Assistant sends it.</div>' : ''}${notes}
     ${last ? `<div class="mut small done-line">✓ ${needsYes && last.action === 'done' ? 'Approved' : ACT[last.action] || last.action} · ${fmtT(last.created_at)} · ${last.action === 'done' || last.action === 'dismiss' || last.action === 'reopen' ? 'logged' : 'Personal Assistant routes it to ' + esc(deptLabel(c))}</div>` : ''}</div>`;
 }
 function tickList(ro) {
@@ -433,32 +449,33 @@ function briefSummaries() {
   const bs = D.briefsToday || [], m = bs.filter(b => b.kind !== 'night').slice(-1)[0], n = bs.filter(b => b.kind === 'night').slice(-1)[0];
   const txt = b => (b && b.content && (b.content.summary || (b.content.focus && b.content.focus.area))) || '';
   const since = (m && m.content && Array.isArray(m.content.since)) ? m.content.since : [];
-  return `<section id="summary"><div class="card bsum main"><div class="lbl">Morning brief${m ? ' · ' + fmtT(m.published_at) : ''}</div>${m ? `<div class="sumtxt">${esc(txt(m) || 'Published.')}</div>` : '<div class="mut">Arrives about 07:10.</div>'}
+  const pts = m ? (Array.isArray(m.content.points) && m.content.points.length ? m.content.points : String(txt(m)).split(/(?<=\.)\s+(?=[A-Z])/).map(x => x.replace(/^(Also|Then|Plus):\s*/i, '').replace(/\.$/, '').trim()).filter(Boolean)).slice(0, 3) : [];
+  const hero = pts.map((p, i) => { const mm = String(p).match(/^([^:]{2,28}):\s*(.*)$/); return `<li class="pt"><span class="n">${i + 1}</span><div>${mm ? `<span class="k">${esc(mm[1])}</span>${esc(cap(mm[2]))}` : esc(cap(p))}</div></li>`; }).join('');
+  return `<section id="summary"><div class="hero bsum main"><div class="lbl">Morning brief${m ? ' · ' + fmtT(m.published_at) : ''}</div><div class="htitle">${m ? 'Your 3 things' : 'Good morning'}</div>${m ? `<ol class="pts">${hero}</ol>` : '<div class="mut">Arrives about 07:10.</div>'}
     ${since.length ? `<details class="since"><summary class="mini">Overnight (${since.length})</summary>${since.map(x => `<div class="li"><span class="dot ${esc(x.status)}"></span><div><b>${esc(x.item)}</b><div class="mut small">${esc(x.outcome)}</div></div></div>`).join('')}</details>` : ''}</div>
-    <div class="card bsum"><div class="lbl">Evening brief</div>${n ? `<div class="sumtxt">${esc(txt(n) || 'Published.')}</div><div class="mut small">${fmtT(n.published_at)}</div>` : '<div class="mut">Arrives about 22:00.</div>'}</div></section>`;
+    <div class="card bsum eve"><span class="lbl">Evening brief</span>${n ? `<div class="sumtxt">${esc(txt(n) || 'Published.')}</div><div class="mut small">${fmtT(n.published_at)}</div>` : '<span class="mut small">about 22:00</span>'}</div></section>`;
 }
 function dashTop(k, ro, d) {
   if (ro) return '';
   const sec = (id, t, arr, sub = '', empty = '') => `<section id="${id}"><h2>${t}${sub ? ` <span class="sub">${sub}</span>` : ''}</h2>${arr.length ? arr.join('') : `<div class="card mut">${empty}</div>`}</section>`;
   const top = dashOf('top3').filter(c => c.status === 'open').slice(0, 3), openEm = d.emails.filter(m => !['approved', 'declined'].includes(api.state(m.id).status));
-  const keys = dashOf('key'), ideas = dashOf('idea', c => c.status !== 'dismissed'), status = dashOf('status');
+  const keys = dashOf('key', c => c.status === 'open'), ideas = dashOf('idea', c => c.status === 'open'), status = dashOf('status');
   return briefSummaries() + goalSection()
     + sec('top3', 'Top 3 right now', top.map(c => dashCard(c)), '', 'Nothing urgent. 🎉')
     + tickList(false)
-    + sec('emails', 'Approvals: emails & posts', [...d.emails.map(m => emailCard(m, false)), ...dashOf('email').map(c => dashCard(c))], `${openEm.length + dashOf('email', c => c.status === 'open').length} waiting`, 'No emails waiting for you.')
-    + sec('keys', 'Sign-ins & keys', keys.map(c => dashCard(c)), 'paste secrets only in Personal Assistant', 'Nothing needed.')
-    + `<div class="card mut small">Secrets (tokens, keys, codes) go only into the masked box in <a href="${PA_CHAT}">Personal Assistant's chat ›</a></div>`
-    + sec('ideas', 'Ideas', ideas.map(c => dashCard(c)), 'Develop this = Personal Assistant passes it to the team', 'No ideas yet.')
+    + sec('emails', 'Approvals', [...openEm.map(m => emailCard(m, false)), ...dashOf('email', c => c.status === 'open').map(c => dashCard(c))], `${openEm.length + dashOf('email', c => c.status === 'open').length} waiting`, 'Nothing waiting. 🎉')
+    + sec('keys', 'Sign-ins & keys', [...keys.map(c => dashCard(c)), `<div class="mut small hintline">Secrets only in <a href="${PA_CHAT}">Personal Assistant's chat ›</a></div>`], '', 'Nothing needed.')
+    + sec('ideas', 'Ideas', ideas.map(c => dashCard(c)), '', 'No ideas yet.')
     + decidedToday(k, d)
-    + `<section id="teams"><h2>Where each team is <span class="sub">tap for the team page</span></h2>${status.map(c => c.tile ? `<a class="card link tstat" href="#/d/${c.tile}"><span class="tag">${esc(deptLabel(c))}</span><b>${esc(c.title)}</b><div class="mut small">${esc(c.body || '')} · ${fmtT(c.updated_at)}</div></a>` : dashCard(c)).join('')}</section>`;
+    + `<section id="teams"><h2>Your team <span class="sub">most pressing first</span></h2>${teamList()}</section>`;
 }
 function goalSection() {
   const g = dashOf('goal'); if (!g.length) return '';
   const main = g.find(c => c.department === 'briefs'), teams = g.filter(c => c !== main);
   const pill = p => `<span class="tag goal-${esc((p || 'not started').replace(/\s+/g, '-'))}">${esc(p || 'not started')}</span>`;
   return `<section id="goal"><h2>Today's goal</h2><div class="card goal">${main ? `<b>${esc(main.body)}</b>` : ''}
-    ${teams.map(c => `<div class="gteam"><div class="row">${pill(c.progress)}</div><div>${esc(c.body)}</div></div>`).join('')}
-    <div class="mut small">Tracked to done in the evening brief.</div></div></section>`;
+    ${teams.map(c => { const b = String(c.body || ''), cut = b.length > 90 ? b.slice(0, 80).replace(/\s+\S*$/, '') + '…' : b; return `<div class="gteam"><div class="row">${pill(c.progress)}</div>${cut === b ? `<div>${esc(b)}</div>` : `<details class="more"><summary>${esc(cut)} <span class="lnk">More</span></summary><div>${esc(b)}</div></details>`}</div>`; }).join('')}
+    </div></section>`;
 }
 function decidedToday(k, d) {
   const cards = (D.dash || []).filter(c => c.status !== 'open' && c.section !== 'status' && ukDate(c.updated_at) === k);
@@ -468,17 +485,21 @@ function decidedToday(k, d) {
     ...todos.map(t => `<div class="li"><span class="dot done"></span><div><b>${esc(t.text)}</b><div class="mut small">Ticked</div></div></div>`)];
   return rows.length ? `<section id="decided"><h2>Settled today <span class="sub">${rows.length}</span></h2><details class="card list"><summary class="mini">Show what's settled</summary>${rows.join('')}</details></section>` : '';
 }
+function toast(t) { let el = document.getElementById('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); } el.textContent = t; el.className = 'show'; clearTimeout(toast.t); toast.t = setTimeout(() => el.className = '', 2200); }
 function wireDash(v) {
   v.querySelectorAll('[data-dact]').forEach(b => b.onclick = async () => {
     const id = b.dataset.dact, a = b.dataset.a, inp = v.querySelector(`[data-dnote="${id}"]`), note = inp ? inp.value.trim() : '';
     if (a === 'note' && !note) { inp.classList.add('bad'); inp.focus(); return; }
     b.disabled = true; b.textContent = 'Saving…';
-    try { await api.dashAct(id, a, a === 'develop' || a === 'note' ? note : null); } finally { await refresh(); }
+    const card = b.closest('[data-card]'), gone = ['done', 'dismiss'].includes(a);
+    if (gone && card) { card.classList.add('leaving'); setTimeout(() => card.remove(), 180);   // disappears straight away; the DB write makes it stay gone after reload
+      const c = (D.dash || []).find(x => x.id === id); if (c) { c.status = a === 'done' ? 'done' : 'dismissed'; c.updated_at = new Date().toISOString(); } }
+    try { await api.dashAct(id, a, a === 'develop' || a === 'note' ? note : null); toast(gone ? `${a === 'done' ? (b.dataset.lbl || 'Done') : 'Not now'} · sent to ${b.dataset.owner || 'Personal Assistant'}` : 'Sent'); } finally { await refresh(); }
   });
 }
 
 // ---- TEAM: exactly 5 tiles
-const teamView = () => `<section><h2>Your team <span class="sub">${D.tiles.reduce((n, t) => n + unread(t.slug), 0)} unread</span></h2>${tilesRow()}</section>`;
+const teamView = () => `<section><h2>Your team <span class="sub">most pressing first</span></h2>${teamList()}</section>`;
 
 // ---- INSIDE A DEPARTMENT: summary, then swipeable project pages (newest first), each with actionable items
 function deptView(slug) {
@@ -487,7 +508,7 @@ function deptView(slug) {
     return `<div class="dhead">${avatar(t, true)}<div><h2>${esc(t.name)}</h2><div class="mut">Kept private. Nothing personal is stored in this app.</div></div></div>
       ${D.family.map(f => `<div class="card priv"><b>${esc(f.summary)}</b><div class="mut small">Pointer: ${esc(f.pointer)}</div></div>`).join('')}`; }
   const ps = projectsOf(slug), open = ps.reduce((n, p) => n + p.items.filter(isOpen).length, 0);
-  const mine = (D.dash || []).filter(c => c.tile === slug), now = mine.filter(c => c.section === 'status'), act = mine.filter(c => ['top3', 'key', 'email'].includes(c.section) && c.status === 'open'), ids = mine.filter(c => c.section === 'idea' && c.status !== 'dismissed');
+  const mine = (D.dash || []).filter(c => c.tile === slug), now = mine.filter(c => c.section === 'status'), act = mine.filter(c => ['top3', 'key', 'email'].includes(c.section) && c.status === 'open'), ids = mine.filter(c => c.section === 'idea' && c.status === 'open');
   const ups = D.updates.filter(u => u.dept === slug).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8), reps = (D.reports || []).filter(r => r.dept === slug).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const happening = `<section><h2>Happening now</h2>${now.map(c => `<div class="card"><b>${esc(c.title)}</b><div class="mut">${esc(c.body || '')}</div><div class="mut small">${fmtT(c.updated_at)}</div></div>`).join('')}
      ${ups.length ? `<div class="card list feed">${ups.map(u => `<div class="li"><div><b>${esc(u.bot)}</b> <span class="mut small">${fmtT(u.at)}</span><div>${esc(u.text)}</div></div></div>`).join('')}</div>` : now.length ? '' : '<div class="card mut">No update posted yet today.</div>'}</section>`

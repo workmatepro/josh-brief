@@ -1,5 +1,5 @@
 // Service worker v6: app shell network-first (cache only when offline) (opens offline), brief data network-first so the same URL shows the newest brief.
-const C = 'brief-shell-v14', SHELL = ['./', 'index.html', 'app.css', 'app.js', 'vendor/supabase-2.118.0.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+const C = 'brief-shell-v15', SHELL = ['./', 'index.html', 'app.css', 'app.js', 'vendor/supabase-2.118.0.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/bots/tech.png', 'icons/bots/marketing.png', 'icons/bots/support.png'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(SHELL))); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {
