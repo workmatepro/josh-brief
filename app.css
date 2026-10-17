@@ -116,3 +116,14 @@ details.more summary{list-style:none;cursor:pointer}details.more summary::-webki
 #toast.show{opacity:1;transform:translateX(-50%)}
 .hintline{margin:2px 4px 8px}
 body.night .hero .pt{background:rgba(255,255,255,.06)}
+
+/* v16: Lovable log */
+details.lov{padding:12px 13px}details.lov summary{list-style:none;cursor:pointer}details.lov summary::-webkit-details-marker{display:none}
+.lovtop{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:6px}.lovd{font:700 12.5px/1 Inter,system-ui;color:var(--mut);margin-right:2px}
+.lovw{font:600 14.5px/1.35 Inter,system-ui;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}details.lov[open] .lovw{display:none}
+.lovmore{display:inline-block;margin-top:6px;color:var(--o);font:700 12.5px Inter,system-ui}details.lov[open] .lovmore{display:none}
+.lovdl{margin:4px 0 0}.lovdl dt{font:800 11px/1.2 Inter,system-ui;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin-top:10px}.lovdl dd{margin:3px 0 0;font-size:14.5px;line-height:1.45;overflow-wrap:anywhere}
+.lovdl code{background:#F3EEE6;border-radius:4px;padding:1px 4px;font-size:12.5px}.lovdl .lnk{display:inline;padding:0;border:0}
+.tag.lst.in-progress{background:#fff2d6;color:#7a5200}.tag.lst.preview{background:#e3ecfb;color:#1d4f9c}.tag.lst.live{background:#e6f4ea;color:#1e5c33}
+.tag.lint{background:#EEF0F3;color:var(--mut)}.tag.lpub{background:#FFF6EF;color:#B23C0E}
+body.night .lovdl code{background:#2A251D}

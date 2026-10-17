@@ -115,6 +115,7 @@ const LiveApi = {
     this.log_rows = logs;
     const opt = async (t, b) => { try { return await this.q(t, b); } catch (e) { return []; } };   // tolerate a missing table (older DB)
     const [cards, acts] = await Promise.all([opt('dash_cards', x => x.order('rank')), opt('dash_actions', x => x.order('created_at', { ascending: false }).limit(300))]);
+    this.data.lovable = await opt('lovable_log', x => x.order('logged_on', { ascending: false }).order('created_at', { ascending: false }));   // v16: read-only Lovable log (Josh reads; Briefs writes)
     this.data.dash = cards.map(c => ({ ...c, tile: tileOfDept[c.department] || null, acts: acts.filter(a => a.card_id === c.id) }));
     this.data.tileOfDept = tileOfDept; this.data.deptName = Object.fromEntries(depts.map(d => [d.slug, d.name]));
     this.data.briefsToday = briefs.filter(b => b.iso_date === today).sort((a, b) => (a.published_at || '').localeCompare(b.published_at || ''));
@@ -146,7 +147,7 @@ const LiveApi = {
   subscribe(cb) {
     let t = null; const kick = why => { clearTimeout(t); t = setTimeout(async () => { try { await this.load(); D = this.data; cb(why); } catch (e) {} }, 400); };
     const ch = this.client().channel('brief-live');
-    for (const table of ['updates', 'projects', 'project_items', 'briefs', 'items', 'reports', 'todos', 'feedback_questions']) ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => kick('push'));
+    for (const table of ['updates', 'projects', 'project_items', 'briefs', 'items', 'reports', 'todos', 'feedback_questions', 'lovable_log']) ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => kick('push'));
     ch.subscribe();
     setInterval(() => kick('poll'), 30000);                      // 30 s poll as a backup to realtime
   },
@@ -553,8 +554,20 @@ function todoView() {
   return `<section><h2>Your to-do <span class="sub">${t.filter(x => !x.done).length} left</span></h2>` + t.map(x => `<label class="card todo ${x.done ? 'd' : ''}"><input type="checkbox" data-todo="${x.id}" ${x.done ? 'checked' : ''}><span>${linkify(x.text)}${x.carried ? '<br><span class="tag">Carried over</span>' : ''}</span></label>`).join('') +
     `<div class="cmrow"><input id="newtodo" placeholder="Add a to-do"><button class="mini" id="addtodo">Add</button></div><p class="mut small">Assumption: anything not ticked carries over to tomorrow.</p></section>`;
 }
+// v16: Lovable log. Every change bots made through Lovable the app (the build platform). Read-only, newest first, one collapsible card per change.
+const LOV_ST = { 'in progress': 'In progress', preview: 'Preview', live: 'Live' };
+function lovableSection() {
+  const rows = [...(D.lovable || [])].sort((a, b) => String(b.logged_on).localeCompare(String(a.logged_on)) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  const proof = p => !p ? '<span class="mut">None yet</span>' : safeUrl(p) && /^https:\/\//.test(p) ? `<a class="lnk" href="${esc(p)}" target="_blank" rel="noopener">${esc(p)}</a>` : `<code>${esc(p)}</code>`;
+  const fmtD = d => { const x = new Date(String(d) + 'T12:00:00Z'); return isNaN(x) ? esc(d) : x.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Europe/London' }); };
+  const card = r => { const st = r.status || 'in progress', pub = r.show_publicly === true;
+    return `<details class="card lov" data-lov="${esc(r.id)}"><summary><div class="lovtop"><span class="lovd">${fmtD(r.logged_on)}</span><span class="tag ref">${esc(r.wq_id)}</span><span class="tag lst ${st.replace(/\s+/g, '-')}">${esc(LOV_ST[st] || st)}</span><span class="tag ${pub ? 'lpub' : 'lint'}">${pub ? 'public' : 'internal'}</span></div>
+      <div class="lovw">${esc(r.what_changed)}</div><span class="lovmore">Details</span></summary>
+      <dl class="lovdl"><dt>What changed</dt><dd>${esc(r.what_changed)}</dd><dt>Why</dt><dd>${esc(r.why)}</dd><dt>Status</dt><dd>${esc(LOV_ST[st] || st)}</dd><dt>Proof</dt><dd>${proof(r.proof)}</dd>${pub ? `<dt>Customers see</dt><dd><b>${esc(r.public_title || '')}</b> ${esc(r.public_summary || '')}</dd>` : ''}</dl></details>`; };
+  return `<section id="lovable"><h2>Lovable <span class="sub">${rows.length} change${rows.length === 1 ? '' : 's'}</span></h2><div class="mut small hintline">Everything the bots changed through Lovable the app, newest first. Read-only.</div>${rows.length ? rows.map(card).join('') : '<div class="card mut">Nothing logged yet.</div>'}</section>`;
+}
 function moreView() {
-  return `<section><h2>More</h2><div class="card">Room for future sections: Ratings history, Ideas bank, Settings.</div>
+  return lovableSection() + `<section><h2>More</h2><div class="card">Room for future sections: Ratings history, Ideas bank, Settings.</div>
    <div class="card"><b>${DEMO ? 'Activity on this phone (demo log)' : 'Your recent actions'}</b><div class="mut small">${api.activity().slice(-8).reverse().map(a => esc(a.action + ' · ' + a.item)).join('<br>') || 'Nothing yet.'}</div></div>
    <button class="btn ghost" id="signout">Sign out</button></section>`;
 }
